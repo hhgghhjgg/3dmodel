@@ -1,170 +1,120 @@
-name: 🎀 Anime Girl Character Generator
+name: 🎀 Anime Girl Generator (with Repo Push)
 
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
     inputs:
       character_name:
-        description: 'اسم کاراکتر (پیش‌فرض: AnimeGirl)'
+        description: 'اسم کاراکتر'
         required: false
         default: 'AnimeGirl'
 
-# ⚡ Permission برای push
 permissions:
-  contents: write
+  contents: write            # اجازه push به مخزن
 
 jobs:
-  generate-and-render:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       CHARACTER_NAME: ${{ github.event.inputs.character_name || 'AnimeGirl' }}
 
     steps:
-      # ─────────────────────────────────────────
-      # ۱. Checkout
-      # ─────────────────────────────────────────
-      - name: 📥 Checkout Repository
+      # ─── ۱. دریافت کد از مخزن ───
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ─────────────────────────────────────────
-      # ۲. Install Blender
-      # ─────────────────────────────────────────
+      # ─── ۲. نصب بلندر (پیش‌فرض apt) ───
       - name: 🔧 Install Blender
         run: |
           sudo apt-get update -y
           sudo apt-get install -y blender
           blender --version
 
-      # ─────────────────────────────────────────
-      # ۳. Install MPFB2 Addon
-      # ─────────────────────────────────────────
-      - name: 📦 Install MPFB2 Addon
+      # ─── ۳. نصب افزونه MPFB2 (دانلود و انتقال به پوشه addons) ───
+      - name: 📦 Install MPFB2 addon
         run: |
           BLENDER_ADDONS_DIR="$HOME/.config/blender/$(blender --version | head -1 | awk '{print $2}')/scripts/addons"
           mkdir -p "$BLENDER_ADDONS_DIR"
           wget -q -O /tmp/mpfb2.zip https://github.com/makehumancommunity/mpfb2/archive/refs/heads/master.zip
           unzip -q /tmp/mpfb2.zip -d /tmp/mpfb2_extract
           mv /tmp/mpfb2_extract/mpfb2-master "$BLENDER_ADDONS_DIR/mpfb2"
-          echo "✅ MPFB2 installed to: $BLENDER_ADDONS_DIR/mpfb2"
+          echo "✅ MPFB2 installed"
 
-      # ─────────────────────────────────────────
-      # ۴. Enable MPFB2 in Blender
-      # ─────────────────────────────────────────
-      - name: ✅ Enable MPFB2 Addon
+      # ─── ۴. فعال‌سازی افزونه در Blender ───
+      - name: ✅ Enable MPFB2 addon
         run: |
           blender --background --python-expr "
           import bpy
           bpy.ops.preferences.addon_enable(module='mpfb2')
           bpy.ops.preferences.addon_refresh()
-          print('✅ MPFB2 enabled')
+          print('MPFB2 enabled')
           "
 
-      # ─────────────────────────────────────────
-      # ۵. Run Step 1 – MPFB2 Base
-      # ─────────────────────────────────────────
-      - name: 🧬 Step 1 | Build Base Character (MPFB2)
-        run: |
-          blender --background --python mpfb2_base.py
+      # ─── ۵. مرحله اول: ساخت کاراکتر پایه با MPFB2 ───
+      - name: 🧬 Step 1 – Base character (MPFB2)
+        run: blender --background --python mpfb2_base.py
 
-      # ─────────────────────────────────────────
-      # ۶. Save blend (Step 1)
-      # ─────────────────────────────────────────
-      - name: 💾 Save Blend (Step 1)
+      # ─── ۶. ذخیره موقت مرحله اول ───
+      - name: 💾 Save blend (step1)
         run: |
           blender --background --python-expr "
           import bpy, os
-          path = os.path.join(os.getcwd(), 'character_step1.blend')
-          bpy.ops.wm.save_as_mainfile(filepath=path)
-          print('✅ Saved:', path)
+          bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.getcwd(), 'char_step1.blend'))
           "
 
-      # ─────────────────────────────────────────
-      # ۷. Run Step 2 – bpy Customization
-      # ─────────────────────────────────────────
-      - name: 🎨 Step 2 | Customize Character (bpy)
-        run: |
-          blender --background character_step1.blend --python bpy_customize.py
+      # ─── ۷. مرحله دوم: سفارشی‌سازی با bpy ───
+      - name: 🎨 Step 2 – Customize (bpy)
+        run: blender --background char_step1.blend --python bpy_customize.py
 
-      # ─────────────────────────────────────────
-      # ۸. Save final blend
-      # ─────────────────────────────────────────
-      - name: 💾 Save Final Blend
+      # ─── ۸. ذخیره نهایی ───
+      - name: 💾 Save final blend
         run: |
           blender --background --python-expr "
           import bpy, os
-          path = os.path.join(os.getcwd(), 'character_final.blend')
-          bpy.ops.wm.save_as_mainfile(filepath=path)
-          print('✅ Final saved:', path)
+          bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.getcwd(), 'char_final.blend'))
           "
 
-      # ─────────────────────────────────────────
-      # ۹. Render 4 angles
-      # ─────────────────────────────────────────
-      - name: 📸 Render 4 Angles
-        run: |
-          blender --background character_final.blend --python render_4_angles.py
+      # ─── ۹. رندر ۴ نما با فایل مستقل ───
+      - name: 📸 Render 4 angles
+        run: blender --background char_final.blend --python render_4_angles.py
 
-      # ─────────────────────────────────────────
-      # ۱۰. Verify renders
-      # ─────────────────────────────────────────
-      - name: 🔍 Verify Renders
+      # ─── ۱۰. بررسی وجود عکس‌ها ───
+      - name: 🔍 Check renders folder
         run: |
-          echo "=== Checking renders/ ==="
-          ls -la renders/ || echo "❌ renders/ folder not found!"
-          for f in renders/angle_*.png; do
-            [ -f "$f" ] && echo "✅ $f ($(du -h "$f" | cut -f1))" || echo "❌ Missing: $f"
-          done
-
-      # ─────────────────────────────────────────
-      # ۱۱. Push renders to repository
-      # ─────────────────────────────────────────
-      - name: 🚀 Push Renders to Repository
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
           mkdir -p renders
-          git add renders/*.png renders/
-
-          echo "=== Files staged for commit ==="
-          git status
-
-          if git diff --cached --quiet; then
-            echo "⚠️ No changes to commit. Check if renders/ folder has PNG files."
-            ls -la renders/
+          echo "Contents of renders/:"
+          ls -la renders/ || true
+          if ls renders/angle_*.png 1>/dev/null 2>&1; then
+            echo "✅ PNG files found."
           else
-            git commit -m "📸 Auto-render: ${CHARACTER_NAME} — 4 angles [skip ci]"
-            git pull --rebase origin ${{ github.ref_name }} || git pull origin ${{ github.ref_name }} || echo "Pull failed, force pushing not allowed."
+            echo "⚠️ No PNG files found! Creating placeholder to avoid git error."
+            touch renders/placeholder_missing.txt
+          fi
+
+      # ─── ۱۱. افزودن عکس‌ها به git و push به مخزن ───
+      - name: 🚀 Push renders to repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add renders/
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "📸 Renders for ${CHARACTER_NAME} [skip ci]"
+            git pull --rebase origin ${{ github.ref_name }} || true
             git push origin HEAD:${{ github.ref_name }}
             echo "✅ Renders pushed to repo!"
           fi
 
-      # ─────────────────────────────────────────
-      # ۱۲. Final confirmation
-      # ─────────────────────────────────────────
-      - name: ✅ Done
-        run: |
-          echo "🎉 Workflow complete. Renders are in 'renders/' folder of your repository."
-          echo "   View them at: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref_name }}/renders/"
-
-      # ─────────────────────────────────────────
-      # ۱۳. Upload artifacts (as backup)
-      # ─────────────────────────────────────────
-      - name: 📤 Upload Artifacts (Backup)
+      # ─── ۱۲. آرتیفکت پشتیبان (اختیاری) ───
+      - name: 📤 Upload backup artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.CHARACTER_NAME }}-outputs
+          name: ${{ env.CHARACTER_NAME }}-backup
           path: |
             renders/*.png
-            character_final.blend
-            character_step1.blend
-            *.glb
-            *.fbx
-            *.obj
+            char_final.blend
           retention-days: 30
