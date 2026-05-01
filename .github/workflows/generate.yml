@@ -1,4 +1,4 @@
-name: 🎀 Anime Girl Generator
+name: 🎀 Anime Girl Character Generator
 
 on:
   push:
@@ -6,102 +6,179 @@ on:
   workflow_dispatch:
     inputs:
       character_name:
-        description: 'اسم کاراکتر'
+        description: 'اسم کاراکتر (پیش‌فرض: AnimeGirl)'
         required: false
         default: 'AnimeGirl'
 
 jobs:
   generate-and-render:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      CHARACTER_NAME: ${{ github.event.inputs.character_name || 'AnimeGirl' }}
 
     steps:
-      # ─────────────────────────────────────
-      # ۱. Checkout مخزن
-      # ─────────────────────────────────────
+      # ─────────────────────────────────────────
+      # ۱. Checkout Repository
+      # ─────────────────────────────────────────
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      # ─────────────────────────────────────
-      # ۲. نصب بلندر (بدون GUI)
-      # ─────────────────────────────────────
+      # ─────────────────────────────────────────
+      # ۲. Install Blender (headless)
+      # ─────────────────────────────────────────
       - name: 🔧 Install Blender
         run: |
-          sudo apt-get update
+          sudo apt-get update -y
           sudo apt-get install -y blender
+          blender --version
 
-      # ─────────────────────────────────────
-      # ۳. نصب MPFB2 (از GitHub)
-      # ─────────────────────────────────────
+      # ─────────────────────────────────────────
+      # ۳. Install MPFB2 Addon
+      # ─────────────────────────────────────────
       - name: 📦 Install MPFB2 Addon
         run: |
-          mkdir -p ~/.config/blender/*/scripts/addons/
-          git clone https://github.com/MPFB2/mpfb2.git ~/.config/blender/*/scripts/addons/mpfb2 || true
+          BLENDER_ADDONS_DIR="$HOME/.config/blender/$(blender --version | head -1 | awk '{print $2}')/scripts/addons"
+          mkdir -p "$BLENDER_ADDONS_DIR"
+          if [ ! -d "$BLENDER_ADDONS_DIR/mpfb2" ]; then
+            git clone --depth 1 https://github.com/MPFB2/mpfb2.git "$BLENDER_ADDONS_DIR/mpfb2"
+          else
+            echo "MPFB2 already installed"
+          fi
 
-      # ─────────────────────────────────────
-      # ۴. ران کردن اسکریپت ۱: MPFB2 Base
-      # ─────────────────────────────────────
-      - name: 🧬 Run Step 1 — MPFB2 Base Character
+      # ─────────────────────────────────────────
+      # ۴. Enable MPFB2 in Blender
+      # ─────────────────────────────────────────
+      - name: ✅ Enable MPFB2 Addon
         run: |
-          blender --background --python mpfb2_base.py
-
-      # ─────────────────────────────────────
-      # ۵. ران کردن اسکریپت ۲: bpy Customization
-      # ─────────────────────────────────────
-      - name: 🎨 Run Step 2 — bpy Customization
-        run: |
-          blender --background --python bpy_customize.py
-
-      # ─────────────────────────────────────
-      # ۶. ذخیره فایل blend میانی
-      # ─────────────────────────────────────
-      - name: 💾 Save Blend File
-        run: |
-          blender --background --python -c "
+          blender --background --python-expr "
           import bpy
-          bpy.ops.wm.save_as_mainfile(filepath='character.blend')
+          bpy.ops.preferences.addon_enable(module='mpfb2')
+          bpy.ops.preferences.addon_refresh()
+          print('✅ MPFB2 enabled')
           "
 
-      # ─────────────────────────────────────
-      # ۷. گرفتن ۴ اسکرین‌شات از ۴ زاویه
-      # ─────────────────────────────────────
-      - name: 📸 Render 4 Angles
+      # ─────────────────────────────────────────
+      # ۵. Run Step 1 — MPFB2 Base Character
+      # ─────────────────────────────────────────
+      - name: 🧬 Step 1 | Build Base Character (MPFB2)
         run: |
-          blender --background character.blend --python render_4_angles.py
+          blender --background --python mpfb2_base.py
+        continue-on-error: false
 
-      # ─────────────────────────────────────
-      # ۸. آپلود اسکرین‌شات‌ها به مخزن
-      # ─────────────────────────────────────
-      - name: 🚀 Commit & Push Screenshots
+      # ─────────────────────────────────────────
+      # ۶. Save Blend File After Step 1
+      # ─────────────────────────────────────────
+      - name: 💾 Save Blend File
+        run: |
+          blender --background --python-expr "
+          import bpy
+          import os
+          output_path = os.path.join(os.getcwd(), 'character_step1.blend')
+          bpy.ops.wm.save_as_mainfile(filepath=output_path)
+          print(f'✅ Saved: {output_path}')
+          "
+
+      # ─────────────────────────────────────────
+      # ۷. Run Step 2 — bpy Customization
+      # ─────────────────────────────────────────
+      - name: 🎨 Step 2 | Customize Character (bpy)
+        run: |
+          blender --background character_step1.blend --python bpy_customize.py
+        continue-on-error: false
+
+      # ─────────────────────────────────────────
+      # ۸. Save Final Blend File
+      # ─────────────────────────────────────────
+      - name: 💾 Save Final Blend File
+        run: |
+          blender --background --python-expr "
+          import bpy
+          import os
+          output_path = os.path.join(os.getcwd(), 'character_final.blend')
+          bpy.ops.wm.save_as_mainfile(filepath=output_path)
+          print(f'✅ Final blend saved: {output_path}')
+          "
+
+      # ─────────────────────────────────────────
+      # ۹. Render 4 Angles
+      # ─────────────────────────────────────────
+      - name: 📸 Render 4 Angles (Front, Left, Back, Right)
+        run: |
+          blender --background character_final.blend --python render_4_angles.py
+        continue-on-error: false
+
+      # ─────────────────────────────────────────
+      # ۱۰. Verify Renders Exist
+      # ─────────────────────────────────────────
+      - name: 🔍 Check Renders
+        run: |
+          echo "Checking renders..."
+          ls -la renders/ || echo "⚠️ renders/ folder not found"
+          for f in renders/angle_*.png; do
+            if [ -f "$f" ]; then
+              echo "✅ Found: $f ($(du -h "$f" | cut -f1))"
+            else
+              echo "❌ Missing: $f"
+            fi
+          done
+
+      # ─────────────────────────────────────────
+      # ۱۱. Commit & Push Renders to Repo
+      # ─────────────────────────────────────────
+      - name: 🚀 Push Renders to Repository
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          mkdir -p renders
-          mv angle_*.png renders/
-          
           git add renders/
-          git commit -m "📸 Add 4-angle renders of ${{ github.event.inputs.character_name || 'AnimeGirl' }}" || echo "No changes to commit"
-          git push || echo "Push failed (maybe no changes)"
+          
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "📸 Auto-render: ${CHARACTER_NAME} — 4 angles"
+            git pull --rebase
+            git push
+            echo "✅ Renders pushed to repo!"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ─────────────────────────────────────
-      # ۹. آپلود آرتیفکت (برای اطمینان)
-      # ─────────────────────────────────────
-      - name: 📤 Upload Artifacts
+      # ─────────────────────────────────────────
+      # ۱۲. Upload All Artifacts
+      # ─────────────────────────────────────────
+      - name: 📤 Upload All Outputs
         uses: actions/upload-artifact@v4
         with:
-          name: anime-girl-renders
+          name: ${{ env.CHARACTER_NAME }}-outputs
           path: |
             renders/*.png
-            character.blend
+            character_final.blend
+            character_step1.blend
             *.glb
             *.fbx
+            *.obj
           retention-days: 30
+          compression-level: 6
 
-      # ─────────────────────────────────────
-      # ۱۰. اعلام پایان
-      # ─────────────────────────────────────
-      - name: ✅ Done
-        run: echo "🎉 All 4 renders pushed to repo!"
+      # ─────────────────────────────────────────
+      # ۱۳. Summary
+      # ─────────────────────────────────────────
+      - name: 🎉 Final Summary
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════╗"
+          echo "║   🎀 ANIME GIRL GENERATED! 🎀       ║"
+          echo "╠══════════════════════════════════════╣"
+          echo "║ Character: ${CHARACTER_NAME}        "
+          echo "║ Renders:   renders/                 "
+          echo "║   • angle_front.png                 "
+          echo "║   • angle_left.png                  "
+          echo "║   • angle_back.png                  "
+          echo "║   • angle_right.png                 "
+          echo "║ Blend:     character_final.blend    "
+          echo "╚══════════════════════════════════════╝"
+          echo ""
+          echo "✨ All done! Check your repo. ✨"
