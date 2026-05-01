@@ -392,6 +392,12 @@ bpy.context.scene.render.image_settings.color_mode = 'RGBA'
 print("✅ Export settings ready.")
 
 
+# ★★★ ذخیره فایل میانی برای ادامه workflow ★★★
+print("💾 Saving char_customized.blend for next step...")
+bpy.ops.wm.save_as_mainfile(filepath="char_customized.blend")
+print("✅ char_customized.blend saved successfully.")
+
+
 # ---------------- بخش ۱۱: خروجی نهایی (glTF 2.0 و FBX) ----------------
 print("📦 Exporting final assets...")
 
@@ -444,4 +450,4 @@ print("✨ MPFB2 script finished successfully. ✨")
 
 
 # پایان اسکریپت
-# تعداد خطوط حدودی: 600
+# تعداد خطوط حدودی: ۶۰۰ + ذخیره‌سازی فایل میانی
