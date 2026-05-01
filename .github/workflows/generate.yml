@@ -10,6 +10,10 @@ on:
         required: false
         default: 'AnimeGirl'
 
+# ⚡ Permission برای push
+permissions:
+  contents: write
+
 jobs:
   generate-and-render:
     runs-on: ubuntu-latest
@@ -21,10 +25,12 @@ jobs:
 
     steps:
       # ─────────────────────────────────────────
-      # ۱. Checkout repository
+      # ۱. Checkout
       # ─────────────────────────────────────────
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       # ─────────────────────────────────────────
       # ۲. Install Blender
@@ -36,20 +42,15 @@ jobs:
           blender --version
 
       # ─────────────────────────────────────────
-      # ۳. Install MPFB2 addon (از آرشیو master)
+      # ۳. Install MPFB2 Addon
       # ─────────────────────────────────────────
       - name: 📦 Install MPFB2 Addon
         run: |
           BLENDER_ADDONS_DIR="$HOME/.config/blender/$(blender --version | head -1 | awk '{print $2}')/scripts/addons"
           mkdir -p "$BLENDER_ADDONS_DIR"
-          
-          # دانلود آخرین نسخه از شاخه master مخزن makehumancommunity/mpfb2
           wget -q -O /tmp/mpfb2.zip https://github.com/makehumancommunity/mpfb2/archive/refs/heads/master.zip
-          
-          # استخراج و انتقال به پوشه addons
           unzip -q /tmp/mpfb2.zip -d /tmp/mpfb2_extract
           mv /tmp/mpfb2_extract/mpfb2-master "$BLENDER_ADDONS_DIR/mpfb2"
-          
           echo "✅ MPFB2 installed to: $BLENDER_ADDONS_DIR/mpfb2"
 
       # ─────────────────────────────────────────
@@ -70,10 +71,9 @@ jobs:
       - name: 🧬 Step 1 | Build Base Character (MPFB2)
         run: |
           blender --background --python mpfb2_base.py
-        continue-on-error: false
 
       # ─────────────────────────────────────────
-      # ۶. Save промежуточный blend
+      # ۶. Save blend (Step 1)
       # ─────────────────────────────────────────
       - name: 💾 Save Blend (Step 1)
         run: |
@@ -90,7 +90,6 @@ jobs:
       - name: 🎨 Step 2 | Customize Character (bpy)
         run: |
           blender --background character_step1.blend --python bpy_customize.py
-        continue-on-error: false
 
       # ─────────────────────────────────────────
       # ۸. Save final blend
@@ -110,40 +109,54 @@ jobs:
       - name: 📸 Render 4 Angles
         run: |
           blender --background character_final.blend --python render_4_angles.py
-        continue-on-error: false
 
       # ─────────────────────────────────────────
-      # ۱۰. Check renders
+      # ۱۰. Verify renders
       # ─────────────────────────────────────────
       - name: 🔍 Verify Renders
         run: |
-          ls -la renders/ || echo "No renders folder"
+          echo "=== Checking renders/ ==="
+          ls -la renders/ || echo "❌ renders/ folder not found!"
           for f in renders/angle_*.png; do
             [ -f "$f" ] && echo "✅ $f ($(du -h "$f" | cut -f1))" || echo "❌ Missing: $f"
           done
 
       # ─────────────────────────────────────────
-      # ۱۱. Commit & push renders
+      # ۱۱. Push renders to repository
       # ─────────────────────────────────────────
-      - name: 🚀 Push Renders to Repo
+      - name: 🚀 Push Renders to Repository
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add renders/
+
+          mkdir -p renders
+          git add renders/*.png renders/
+
+          echo "=== Files staged for commit ==="
+          git status
+
           if git diff --cached --quiet; then
-            echo "Nothing to commit"
+            echo "⚠️ No changes to commit. Check if renders/ folder has PNG files."
+            ls -la renders/
           else
-            git commit -m "📸 Auto-render: ${CHARACTER_NAME} — 4 angles"
-            git pull --rebase
-            git push
+            git commit -m "📸 Auto-render: ${CHARACTER_NAME} — 4 angles [skip ci]"
+            git pull --rebase origin ${{ github.ref_name }} || git pull origin ${{ github.ref_name }} || echo "Pull failed, force pushing not allowed."
+            git push origin HEAD:${{ github.ref_name }}
+            echo "✅ Renders pushed to repo!"
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ─────────────────────────────────────────
-      # ۱۲. Upload artifacts
+      # ۱۲. Final confirmation
       # ─────────────────────────────────────────
-      - name: 📤 Upload Outputs (Artifact)
+      - name: ✅ Done
+        run: |
+          echo "🎉 Workflow complete. Renders are in 'renders/' folder of your repository."
+          echo "   View them at: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref_name }}/renders/"
+
+      # ─────────────────────────────────────────
+      # ۱۳. Upload artifacts (as backup)
+      # ─────────────────────────────────────────
+      - name: 📤 Upload Artifacts (Backup)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.CHARACTER_NAME }}-outputs
@@ -155,14 +168,3 @@ jobs:
             *.fbx
             *.obj
           retention-days: 30
-
-      # ─────────────────────────────────────────
-      # ۱۳. Final message
-      # ─────────────────────────────────────────
-      - name: 🎉 Summary
-        run: |
-          echo "╔══════════════════════════════════╗"
-          echo "║  🎀 CHARACTER GENERATED!  🎀   ║"
-          echo "║  Renders → renders/             ║"
-          echo "║  Blend   → character_final.blend║"
-          echo "╚══════════════════════════════════╝"
