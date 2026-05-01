@@ -21,13 +21,13 @@ jobs:
 
     steps:
       # ─────────────────────────────────────────
-      # ۱. Checkout Repository
+      # ۱. Checkout repository
       # ─────────────────────────────────────────
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
       # ─────────────────────────────────────────
-      # ۲. Install Blender (headless)
+      # ۲. Install Blender
       # ─────────────────────────────────────────
       - name: 🔧 Install Blender
         run: |
@@ -36,17 +36,21 @@ jobs:
           blender --version
 
       # ─────────────────────────────────────────
-      # ۳. Install MPFB2 Addon
+      # ۳. Install MPFB2 addon (از آرشیو master)
       # ─────────────────────────────────────────
       - name: 📦 Install MPFB2 Addon
         run: |
           BLENDER_ADDONS_DIR="$HOME/.config/blender/$(blender --version | head -1 | awk '{print $2}')/scripts/addons"
           mkdir -p "$BLENDER_ADDONS_DIR"
-          if [ ! -d "$BLENDER_ADDONS_DIR/mpfb2" ]; then
-            git clone --depth 1 https://github.com/MPFB2/mpfb2.git "$BLENDER_ADDONS_DIR/mpfb2"
-          else
-            echo "MPFB2 already installed"
-          fi
+          
+          # دانلود آخرین نسخه از شاخه master مخزن makehumancommunity/mpfb2
+          wget -q -O /tmp/mpfb2.zip https://github.com/makehumancommunity/mpfb2/archive/refs/heads/master.zip
+          
+          # استخراج و انتقال به پوشه addons
+          unzip -q /tmp/mpfb2.zip -d /tmp/mpfb2_extract
+          mv /tmp/mpfb2_extract/mpfb2-master "$BLENDER_ADDONS_DIR/mpfb2"
+          
+          echo "✅ MPFB2 installed to: $BLENDER_ADDONS_DIR/mpfb2"
 
       # ─────────────────────────────────────────
       # ۴. Enable MPFB2 in Blender
@@ -61,7 +65,7 @@ jobs:
           "
 
       # ─────────────────────────────────────────
-      # ۵. Run Step 1 — MPFB2 Base Character
+      # ۵. Run Step 1 – MPFB2 Base
       # ─────────────────────────────────────────
       - name: 🧬 Step 1 | Build Base Character (MPFB2)
         run: |
@@ -69,20 +73,19 @@ jobs:
         continue-on-error: false
 
       # ─────────────────────────────────────────
-      # ۶. Save Blend File After Step 1
+      # ۶. Save промежуточный blend
       # ─────────────────────────────────────────
-      - name: 💾 Save Blend File
+      - name: 💾 Save Blend (Step 1)
         run: |
           blender --background --python-expr "
-          import bpy
-          import os
-          output_path = os.path.join(os.getcwd(), 'character_step1.blend')
-          bpy.ops.wm.save_as_mainfile(filepath=output_path)
-          print(f'✅ Saved: {output_path}')
+          import bpy, os
+          path = os.path.join(os.getcwd(), 'character_step1.blend')
+          bpy.ops.wm.save_as_mainfile(filepath=path)
+          print('✅ Saved:', path)
           "
 
       # ─────────────────────────────────────────
-      # ۷. Run Step 2 — bpy Customization
+      # ۷. Run Step 2 – bpy Customization
       # ─────────────────────────────────────────
       - name: 🎨 Step 2 | Customize Character (bpy)
         run: |
@@ -90,66 +93,57 @@ jobs:
         continue-on-error: false
 
       # ─────────────────────────────────────────
-      # ۸. Save Final Blend File
+      # ۸. Save final blend
       # ─────────────────────────────────────────
-      - name: 💾 Save Final Blend File
+      - name: 💾 Save Final Blend
         run: |
           blender --background --python-expr "
-          import bpy
-          import os
-          output_path = os.path.join(os.getcwd(), 'character_final.blend')
-          bpy.ops.wm.save_as_mainfile(filepath=output_path)
-          print(f'✅ Final blend saved: {output_path}')
+          import bpy, os
+          path = os.path.join(os.getcwd(), 'character_final.blend')
+          bpy.ops.wm.save_as_mainfile(filepath=path)
+          print('✅ Final saved:', path)
           "
 
       # ─────────────────────────────────────────
-      # ۹. Render 4 Angles
+      # ۹. Render 4 angles
       # ─────────────────────────────────────────
-      - name: 📸 Render 4 Angles (Front, Left, Back, Right)
+      - name: 📸 Render 4 Angles
         run: |
           blender --background character_final.blend --python render_4_angles.py
         continue-on-error: false
 
       # ─────────────────────────────────────────
-      # ۱۰. Verify Renders Exist
+      # ۱۰. Check renders
       # ─────────────────────────────────────────
-      - name: 🔍 Check Renders
+      - name: 🔍 Verify Renders
         run: |
-          echo "Checking renders..."
-          ls -la renders/ || echo "⚠️ renders/ folder not found"
+          ls -la renders/ || echo "No renders folder"
           for f in renders/angle_*.png; do
-            if [ -f "$f" ]; then
-              echo "✅ Found: $f ($(du -h "$f" | cut -f1))"
-            else
-              echo "❌ Missing: $f"
-            fi
+            [ -f "$f" ] && echo "✅ $f ($(du -h "$f" | cut -f1))" || echo "❌ Missing: $f"
           done
 
       # ─────────────────────────────────────────
-      # ۱۱. Commit & Push Renders to Repo
+      # ۱۱. Commit & push renders
       # ─────────────────────────────────────────
-      - name: 🚀 Push Renders to Repository
+      - name: 🚀 Push Renders to Repo
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
           git add renders/
-          
           if git diff --cached --quiet; then
-            echo "No changes to commit"
+            echo "Nothing to commit"
           else
             git commit -m "📸 Auto-render: ${CHARACTER_NAME} — 4 angles"
             git pull --rebase
             git push
-            echo "✅ Renders pushed to repo!"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ─────────────────────────────────────────
-      # ۱۲. Upload All Artifacts
+      # ۱۲. Upload artifacts
       # ─────────────────────────────────────────
-      - name: 📤 Upload All Outputs
+      - name: 📤 Upload Outputs (Artifact)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.CHARACTER_NAME }}-outputs
@@ -161,24 +155,14 @@ jobs:
             *.fbx
             *.obj
           retention-days: 30
-          compression-level: 6
 
       # ─────────────────────────────────────────
-      # ۱۳. Summary
+      # ۱۳. Final message
       # ─────────────────────────────────────────
-      - name: 🎉 Final Summary
+      - name: 🎉 Summary
         run: |
-          echo ""
-          echo "╔══════════════════════════════════════╗"
-          echo "║   🎀 ANIME GIRL GENERATED! 🎀       ║"
-          echo "╠══════════════════════════════════════╣"
-          echo "║ Character: ${CHARACTER_NAME}        "
-          echo "║ Renders:   renders/                 "
-          echo "║   • angle_front.png                 "
-          echo "║   • angle_left.png                  "
-          echo "║   • angle_back.png                  "
-          echo "║   • angle_right.png                 "
-          echo "║ Blend:     character_final.blend    "
-          echo "╚══════════════════════════════════════╝"
-          echo ""
-          echo "✨ All done! Check your repo. ✨"
+          echo "╔══════════════════════════════════╗"
+          echo "║  🎀 CHARACTER GENERATED!  🎀   ║"
+          echo "║  Renders → renders/             ║"
+          echo "║  Blend   → character_final.blend║"
+          echo "╚══════════════════════════════════╝"
