@@ -44,7 +44,6 @@ print("✅ EEVEE Next engine ready")
 
 # ─── 2. Find the real character (ignore default Cube) ───
 char = None
-# First, try to find a mesh with >100 vertices that isn't a Cube
 for obj in bpy.data.objects:
     if obj.type == 'MESH' and len(obj.data.vertices) > 100:
         if 'cube' not in obj.name.lower():
@@ -53,7 +52,6 @@ for obj in bpy.data.objects:
             break
 
 if not char:
-    # Fallback: any mesh that isn't a Cube
     for obj in bpy.data.objects:
         if obj.type == 'MESH' and 'cube' not in obj.name.lower():
             char = obj
@@ -98,12 +96,16 @@ for name, angle in angles.items():
     direction = center - cam.location
     cam.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
 
-    # Render
+    # Render and save
     filepath = os.path.join(OUTPUT_DIR, f"angle_{name}.png")
     scene.render.filepath = filepath
     bpy.ops.render.render(write_still=True)
 
-    size_kb = os.path.getsize(filepath) / 1024 if os.path.exists(filepath) else 0
-    print(f"   ✅ {name:6s} → {size_kb:.1f} KB")
+    # Report size
+    if os.path.exists(filepath):
+        size_kb = os.path.getsize(filepath) / 1024
+        print(f"   ✅ {name:6s} → {size_kb:.1f} KB")
+    else:
+        print(f"   ❌ {name:6s} → file not created!")
 
 print(f"\n🎉 All 4 renders saved to: {OUTPUT_DIR}")
