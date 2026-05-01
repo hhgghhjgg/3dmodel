@@ -1,0 +1,107 @@
+name: 🎀 Anime Girl Generator
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      character_name:
+        description: 'اسم کاراکتر'
+        required: false
+        default: 'AnimeGirl'
+
+jobs:
+  generate-and-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ─────────────────────────────────────
+      # ۱. Checkout مخزن
+      # ─────────────────────────────────────
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      # ─────────────────────────────────────
+      # ۲. نصب بلندر (بدون GUI)
+      # ─────────────────────────────────────
+      - name: 🔧 Install Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+
+      # ─────────────────────────────────────
+      # ۳. نصب MPFB2 (از GitHub)
+      # ─────────────────────────────────────
+      - name: 📦 Install MPFB2 Addon
+        run: |
+          mkdir -p ~/.config/blender/*/scripts/addons/
+          git clone https://github.com/MPFB2/mpfb2.git ~/.config/blender/*/scripts/addons/mpfb2 || true
+
+      # ─────────────────────────────────────
+      # ۴. ران کردن اسکریپت ۱: MPFB2 Base
+      # ─────────────────────────────────────
+      - name: 🧬 Run Step 1 — MPFB2 Base Character
+        run: |
+          blender --background --python mpfb2_base.py
+
+      # ─────────────────────────────────────
+      # ۵. ران کردن اسکریپت ۲: bpy Customization
+      # ─────────────────────────────────────
+      - name: 🎨 Run Step 2 — bpy Customization
+        run: |
+          blender --background --python bpy_customize.py
+
+      # ─────────────────────────────────────
+      # ۶. ذخیره فایل blend میانی
+      # ─────────────────────────────────────
+      - name: 💾 Save Blend File
+        run: |
+          blender --background --python -c "
+          import bpy
+          bpy.ops.wm.save_as_mainfile(filepath='character.blend')
+          "
+
+      # ─────────────────────────────────────
+      # ۷. گرفتن ۴ اسکرین‌شات از ۴ زاویه
+      # ─────────────────────────────────────
+      - name: 📸 Render 4 Angles
+        run: |
+          blender --background character.blend --python render_4_angles.py
+
+      # ─────────────────────────────────────
+      # ۸. آپلود اسکرین‌شات‌ها به مخزن
+      # ─────────────────────────────────────
+      - name: 🚀 Commit & Push Screenshots
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          mkdir -p renders
+          mv angle_*.png renders/
+          
+          git add renders/
+          git commit -m "📸 Add 4-angle renders of ${{ github.event.inputs.character_name || 'AnimeGirl' }}" || echo "No changes to commit"
+          git push || echo "Push failed (maybe no changes)"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─────────────────────────────────────
+      # ۹. آپلود آرتیفکت (برای اطمینان)
+      # ─────────────────────────────────────
+      - name: 📤 Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: anime-girl-renders
+          path: |
+            renders/*.png
+            character.blend
+            *.glb
+            *.fbx
+          retention-days: 30
+
+      # ─────────────────────────────────────
+      # ۱۰. اعلام پایان
+      # ─────────────────────────────────────
+      - name: ✅ Done
+        run: echo "🎉 All 4 renders pushed to repo!"
