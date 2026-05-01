@@ -1,4 +1,4 @@
-name: 🎀 Anime Girl Generator (with Repo Push)
+name: 🎀 Anime Girl Generator (Push to Repo)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         default: 'AnimeGirl'
 
 permissions:
-  contents: write            # اجازه push به مخزن
+  contents: write          # این خط برای push به مخزن ضروری است
 
 jobs:
   build:
@@ -20,20 +20,20 @@ jobs:
       CHARACTER_NAME: ${{ github.event.inputs.character_name || 'AnimeGirl' }}
 
     steps:
-      # ─── ۱. دریافت کد از مخزن ───
+      # ۱. دریافت کد از مخزن
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ─── ۲. نصب بلندر (پیش‌فرض apt) ───
+      # ۲. نصب بلندر
       - name: 🔧 Install Blender
         run: |
           sudo apt-get update -y
           sudo apt-get install -y blender
           blender --version
 
-      # ─── ۳. نصب افزونه MPFB2 (دانلود و انتقال به پوشه addons) ───
+      # ۳. نصب افزونه MPFB2
       - name: 📦 Install MPFB2 addon
         run: |
           BLENDER_ADDONS_DIR="$HOME/.config/blender/$(blender --version | head -1 | awk '{print $2}')/scripts/addons"
@@ -43,7 +43,7 @@ jobs:
           mv /tmp/mpfb2_extract/mpfb2-master "$BLENDER_ADDONS_DIR/mpfb2"
           echo "✅ MPFB2 installed"
 
-      # ─── ۴. فعال‌سازی افزونه در Blender ───
+      # ۴. فعال‌سازی افزونه در Blender
       - name: ✅ Enable MPFB2 addon
         run: |
           blender --background --python-expr "
@@ -53,23 +53,23 @@ jobs:
           print('MPFB2 enabled')
           "
 
-      # ─── ۵. مرحله اول: ساخت کاراکتر پایه با MPFB2 ───
+      # ۵. مرحله اول – ساخت کاراکتر پایه با MPFB2
       - name: 🧬 Step 1 – Base character (MPFB2)
         run: blender --background --python mpfb2_base.py
 
-      # ─── ۶. ذخیره موقت مرحله اول ───
-      - name: 💾 Save blend (step1)
+      # ۶. ذخیره موقت
+      - name: 💾 Save blend
         run: |
           blender --background --python-expr "
           import bpy, os
-          bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.getcwd(), 'char_step1.blend'))
+          bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.getcwd(), 'char.blend'))
           "
 
-      # ─── ۷. مرحله دوم: سفارشی‌سازی با bpy ───
+      # ۷. مرحله دوم – سفارشی‌سازی با bpy
       - name: 🎨 Step 2 – Customize (bpy)
-        run: blender --background char_step1.blend --python bpy_customize.py
+        run: blender --background char.blend --python bpy_customize.py
 
-      # ─── ۸. ذخیره نهایی ───
+      # ۸. ذخیره نهایی
       - name: 💾 Save final blend
         run: |
           blender --background --python-expr "
@@ -77,29 +77,30 @@ jobs:
           bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.getcwd(), 'char_final.blend'))
           "
 
-      # ─── ۹. رندر ۴ نما با فایل مستقل ───
+      # ۹. رندر ۴ نما
       - name: 📸 Render 4 angles
         run: blender --background char_final.blend --python render_4_angles.py
 
-      # ─── ۱۰. بررسی وجود عکس‌ها ───
-      - name: 🔍 Check renders folder
+      # ۱۰. اطمینان از وجود عکس‌ها
+      - name: 🔍 Verify PNGs
         run: |
           mkdir -p renders
-          echo "Contents of renders/:"
+          echo "Check contents:"
           ls -la renders/ || true
           if ls renders/angle_*.png 1>/dev/null 2>&1; then
             echo "✅ PNG files found."
           else
-            echo "⚠️ No PNG files found! Creating placeholder to avoid git error."
-            touch renders/placeholder_missing.txt
+            echo "❌ No PNG files! Renders failed."
+            exit 1
           fi
 
-      # ─── ۱۱. افزودن عکس‌ها به git و push به مخزن ───
+      # ۱۱. افزودن و push عکس‌ها به مخزن
       - name: 🚀 Push renders to repository
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add renders/
+          # فقط فایل‌های PNG را اضافه کن، بقیه را نادیده بگیر
+          git add renders/angle_*.png
           if git diff --cached --quiet; then
             echo "Nothing to commit."
           else
@@ -109,12 +110,12 @@ jobs:
             echo "✅ Renders pushed to repo!"
           fi
 
-      # ─── ۱۲. آرتیفکت پشتیبان (اختیاری) ───
+      # ۱۲. آرتیفکت پشتیبان (اختیاری)
       - name: 📤 Upload backup artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.CHARACTER_NAME }}-backup
           path: |
-            renders/*.png
+            renders/angle_*.png
             char_final.blend
           retention-days: 30
