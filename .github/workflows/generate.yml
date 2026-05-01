@@ -1,121 +1,91 @@
-name: 🎀 Anime Girl Generator (Push to Repo)
+name: Generate 3D Character and Renders
 
 on:
   workflow_dispatch:
     inputs:
       character_name:
         description: 'اسم کاراکتر'
-        required: false
+        required: true
         default: 'AnimeGirl'
-
-permissions:
-  contents: write          # این خط برای push به مخزن ضروری است
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
-    env:
-      CHARACTER_NAME: ${{ github.event.inputs.character_name || 'AnimeGirl' }}
-
     steps:
-      # ۱. دریافت کد از مخزن
-      - name: 📥 Checkout repository
+      # ۱. دریافت کد از ریپازیتوری
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ۲. نصب بلندر
-      - name: 🔧 Install Blender
+      # ۲. نصب Blender 4.0.2 (اگر روی ubuntu-latest نیست)
+      - name: Setup Blender
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y blender
-          blender --version
+          sudo apt-get update
+          sudo apt-get install -y wget unzip
+          wget -q https://download.blender.org/release/Blender4.0/blender-4.0.2-linux-x64.tar.xz
+          tar -xf blender-4.0.2-linux-x64.tar.xz
+          echo "$(pwd)/blender-4.0.2-linux-x64" >> $GITHUB_PATH
 
       # ۳. نصب افزونه MPFB2
-      - name: 📦 Install MPFB2 addon
+      - name: Install MPFB2 addon
         run: |
-          BLENDER_ADDONS_DIR="$HOME/.config/blender/$(blender --version | head -1 | awk '{print $2}')/scripts/addons"
-          mkdir -p "$BLENDER_ADDONS_DIR"
-          wget -q -O /tmp/mpfb2.zip https://github.com/makehumancommunity/mpfb2/archive/refs/heads/master.zip
-          unzip -q /tmp/mpfb2.zip -d /tmp/mpfb2_extract
-          mv /tmp/mpfb2_extract/mpfb2-master "$BLENDER_ADDONS_DIR/mpfb2"
-          echo "✅ MPFB2 installed"
-
-      # ۴. فعال‌سازی افزونه در Blender
-      - name: ✅ Enable MPFB2 addon
-        run: |
+          wget -q https://github.com/makehumancommunity/mpfb2/releases/download/v2.0.0/mpfb2-2.0.0.zip
+          mkdir -p ~/.config/blender/4.0/scripts/addons
+          unzip -q mpfb2-2.0.0.zip -d ~/.config/blender/4.0/scripts/addons/
+          # فعال‌سازی افزونه
           blender --background --python-expr "
-          import bpy
-          bpy.ops.preferences.addon_enable(module='mpfb2')
-          bpy.ops.preferences.addon_refresh()
+          import addon_utils
+          addon_utils.enable('mpfb')
           print('MPFB2 enabled')
           "
 
-      # ۵. مرحله اول – ساخت کاراکتر پایه با MPFB2
-      - name: 🧬 Step 1 – Base character (MPFB2)
+      # ۴. ساخت کاراکتر پایه (اسکریپت mpfb2_base.py خودش char_customized.blend رو ذخیره می‌کنه)
+      - name: Step 1 - Generate base character
         run: blender --background --python mpfb2_base.py
 
-      # ۶. ذخیره موقت
-      - name: 💾 Save blend
+      # ۵. بررسی ذخیره‌سازی فایل میانی
+      - name: Verify char_customized.blend
         run: |
-          blender --background --python-expr "
-          import bpy, os
-          bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.getcwd(), 'char.blend'))
-          "
+          if [ -f char_customized.blend ]; then
+            echo "✅ char_customized.blend exists"
+          else
+            echo "❌ char_customized.blend not found. mpfb2_base.py failed."
+            exit 1
+          fi
 
-      # ۷. مرحله دوم – سفارشی‌سازی با bpy
-      - name: 🎨 Step 2 – Customize (bpy)
-        run: blender --background char.blend --python bpy_customize.py
+      # ۶. شخصی‌سازی کاراکتر (bpy_customize.py رو روی فایل قبلی اجرا و char_final.blend ذخیره می‌کنه)
+      - name: Step 2 - Customize character
+        run: blender --background char_customized.blend --python bpy_customize.py
 
-      # ۸. ذخیره نهایی
-      - name: 💾 Save final blend
+      # ۷. بررسی ذخیره‌سازی فایل نهایی
+      - name: Verify char_final.blend
         run: |
-          blender --background --python-expr "
-          import bpy, os
-          bpy.ops.wm.save_as_mainfile(filepath=os.path.join(os.getcwd(), 'char_final.blend'))
-          "
+          if [ -f char_final.blend ]; then
+            echo "✅ char_final.blend exists"
+          else
+            echo "❌ char_final.blend not found. bpy_customize.py failed."
+            exit 1
+          fi
 
-      # ۹. رندر ۴ نما
-      - name: 📸 Render 4 angles
+      # ۸. رندر چهار نما
+      - name: Render 4 angles
         run: blender --background char_final.blend --python render_4_angles.py
 
-      # ۱۰. اطمینان از وجود عکس‌ها
-      - name: 🔍 Verify PNGs
+      # ۹. بررسی خروجی رندرها
+      - name: Verify renders
         run: |
-          mkdir -p renders
-          echo "Check contents:"
-          ls -la renders/ || true
-          if ls renders/angle_*.png 1>/dev/null 2>&1; then
-            echo "✅ PNG files found."
+          if [ -d renders ] && [ "$(ls -A renders/*.png 2>/dev/null)" ]; then
+            echo "✅ Renders generated:"
+            ls -l renders/
           else
             echo "❌ No PNG files! Renders failed."
             exit 1
           fi
 
-      # ۱۱. افزودن و push عکس‌ها به مخزن
-      - name: 🚀 Push renders to repository
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # فقط فایل‌های PNG را اضافه کن، بقیه را نادیده بگیر
-          git add renders/angle_*.png
-          if git diff --cached --quiet; then
-            echo "Nothing to commit."
-          else
-            git commit -m "📸 Renders for ${CHARACTER_NAME} [skip ci]"
-            git pull --rebase origin ${{ github.ref_name }} || true
-            git push origin HEAD:${{ github.ref_name }}
-            echo "✅ Renders pushed to repo!"
-          fi
-
-      # ۱۲. آرتیفکت پشتیبان (اختیاری)
-      - name: 📤 Upload backup artifact
+      # ۱۰. آپلود فایل‌های خروجی (بلند، رندرها و تصاویر)
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.CHARACTER_NAME }}-backup
+          name: character-and-renders
           path: |
-            renders/angle_*.png
             char_final.blend
-          retention-days: 30
+            renders/
