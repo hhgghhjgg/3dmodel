@@ -16,53 +16,53 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ۲. نصب Blender 4.0.2 (اگر روی ubuntu-latest نیست)
+      # ۲. نصب Blender 4.0.2
       - name: Setup Blender
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget unzip
+          sudo apt-get install -y wget unzip xz-utils
           wget -q https://download.blender.org/release/Blender4.0/blender-4.0.2-linux-x64.tar.xz
           tar -xf blender-4.0.2-linux-x64.tar.xz
           echo "$(pwd)/blender-4.0.2-linux-x64" >> $GITHUB_PATH
 
-      # ۳. نصب افزونه MPFB2
+      # ۳. نصب افزونه MPFB2 (مستقیم از مخزن)
       - name: Install MPFB2 addon
         run: |
-          wget -q https://github.com/makehumancommunity/mpfb2/releases/download/v2.0.0/mpfb2-2.0.0.zip
-          mkdir -p ~/.config/blender/4.0/scripts/addons
-          unzip -q mpfb2-2.0.0.zip -d ~/.config/blender/4.0/scripts/addons/
+          git clone --depth 1 https://github.com/makehumancommunity/mpfb2.git /tmp/mpfb2
+          mkdir -p ~/.config/blender/4.0/scripts/addons/
+          cp -r /tmp/mpfb2/src/mpfb ~/.config/blender/4.0/scripts/addons/
           # فعال‌سازی افزونه
           blender --background --python-expr "
           import addon_utils
           addon_utils.enable('mpfb')
-          print('MPFB2 enabled')
+          print('✅ MPFB2 enabled')
           "
 
-      # ۴. ساخت کاراکتر پایه (اسکریپت mpfb2_base.py خودش char_customized.blend رو ذخیره می‌کنه)
+      # ۴. ساخت کاراکتر پایه (اسکریپت خودش char_customized.blend ذخیره می‌کنه)
       - name: Step 1 - Generate base character
         run: blender --background --python mpfb2_base.py
 
-      # ۵. بررسی ذخیره‌سازی فایل میانی
+      # ۵. بررسی فایل میانی
       - name: Verify char_customized.blend
         run: |
           if [ -f char_customized.blend ]; then
             echo "✅ char_customized.blend exists"
           else
-            echo "❌ char_customized.blend not found. mpfb2_base.py failed."
+            echo "❌ char_customized.blend NOT found"
             exit 1
           fi
 
-      # ۶. شخصی‌سازی کاراکتر (bpy_customize.py رو روی فایل قبلی اجرا و char_final.blend ذخیره می‌کنه)
+      # ۶. شخصی‌سازی (روی char_customized.blend اجرا و char_final.blend ذخیره می‌شه)
       - name: Step 2 - Customize character
         run: blender --background char_customized.blend --python bpy_customize.py
 
-      # ۷. بررسی ذخیره‌سازی فایل نهایی
+      # ۷. بررسی فایل نهایی
       - name: Verify char_final.blend
         run: |
           if [ -f char_final.blend ]; then
             echo "✅ char_final.blend exists"
           else
-            echo "❌ char_final.blend not found. bpy_customize.py failed."
+            echo "❌ char_final.blend NOT found"
             exit 1
           fi
 
@@ -70,18 +70,18 @@ jobs:
       - name: Render 4 angles
         run: blender --background char_final.blend --python render_4_angles.py
 
-      # ۹. بررسی خروجی رندرها
+      # ۹. بررسی رندرها
       - name: Verify renders
         run: |
           if [ -d renders ] && [ "$(ls -A renders/*.png 2>/dev/null)" ]; then
             echo "✅ Renders generated:"
-            ls -l renders/
+            ls -la renders/
           else
-            echo "❌ No PNG files! Renders failed."
+            echo "❌ No PNG files in renders/"
             exit 1
           fi
 
-      # ۱۰. آپلود فایل‌های خروجی (بلند، رندرها و تصاویر)
+      # ۱۰. آپلود آرتیفکت‌ها
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
