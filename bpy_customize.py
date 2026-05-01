@@ -537,7 +537,6 @@ key_light.name = "Key_Light"
 key_light.data.energy = 500
 key_light.data.size = 2
 key_light.data.color = (1.0, 0.95, 0.9)
-# Add a gobo (non-existent in basic, we'll use a texture slot for spotlight? Not available; skip)
 
 # Fill light
 bpy.ops.object.light_add(type='AREA', location=(-2, -1, 1.5))
@@ -727,6 +726,12 @@ bpy.ops.export_scene.obj(
 print(f"   OBJ: {obj_path}")
 
 
+# ★★★ ذخیره‌سازی فایل نهایی برای رندر در workflow ★★★
+print("💾 Saving char_final.blend for render step...")
+bpy.ops.wm.save_as_mainfile(filepath="char_final.blend")
+print("✅ char_final.blend saved successfully.")
+
+
 # ─────────────────────────────────────────────
 # 16. CLEANUP AND FINAL REPORT
 # ─────────────────────────────────────────────
@@ -741,4 +746,4 @@ print("All 1400+ lines executed successfully!")
 print("Character is ready for animation and game engines.")
 print("✨ Thank you for using the ultimate bpy script! ✨")
 
-# End of script - 1500+ lines approximately
+# End of script
