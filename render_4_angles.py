@@ -15,7 +15,7 @@
 ╚═╝         ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚══════╝╚══════╝
 
 Render 4 Angle Views — Front, Left, Back, Right
-Compatible with GitHub Actions (CPU-only, no GPU required)
+Robust version: handles missing denoiser, missing character.
 """
 
 import bpy
@@ -24,41 +24,20 @@ import math
 from mathutils import Vector
 
 # ═══════════════════════════════════════════
-# SETTINGS
+# PARAMETERS (can be changed)
 # ═══════════════════════════════════════════
-
 OUTPUT_DIR = os.path.join(os.getcwd(), "renders")
 RESOLUTION_X = 1080
 RESOLUTION_Y = 1080
 SAMPLES = 32
-RENDER_ENGINE = 'CYCLES'  # or 'BLENDER_EEVEE_NEXT'
-
-ANGLES = {
-    "front": 0,
-    "left": math.radians(90),
-    "back": math.radians(180),
-    "right": math.radians(-90)
-}
-
 CAMERA_DISTANCE = 4.5
 CAMERA_HEIGHT_FACTOR = 0.8
 
-
 # ═══════════════════════════════════════════
-# HELPER FUNCTIONS
+# 1. SETUP RENDER ENGINE (FALLBACK ON DENOISER ERROR)
 # ═══════════════════════════════════════════
-
-def print_banner():
-    """Print startup banner."""
-    print("=" * 55)
-    print("  📸 RENDER 4 ANGLES — Anime Girl Character  ")
-    print("=" * 55)
-
-
-def setup_render_settings():
-    """Configure render engine and output settings."""
+def setup_render():
     scene = bpy.context.scene
-
     scene.render.resolution_x = RESOLUTION_X
     scene.render.resolution_y = RESOLUTION_Y
     scene.render.resolution_percentage = 100
@@ -66,155 +45,132 @@ def setup_render_settings():
     scene.render.image_settings.color_mode = 'RGBA'
     scene.render.film_transparent = True
 
-    if RENDER_ENGINE == 'CYCLES':
+    # ابتدا Cycles رو امتحان کن
+    try:
         scene.render.engine = 'CYCLES'
         scene.cycles.samples = SAMPLES
-        scene.cycles.use_denoising = True
         scene.cycles.device = 'CPU'
-        print(f"✅ Render engine: CYCLES | Samples: {SAMPLES} | Device: CPU")
-    else:
+        # اگر denoiser در دسترس نیست، بدون denoiser ادامه بده
+        if hasattr(scene.cycles, 'use_denoising'):
+            scene.cycles.use_denoising = False  # قطع کن تا خطا نگیره
+        print("✅ Render engine: CYCLES (CPU, no denoiser)")
+    except Exception as e:
+        print(f"⚠️ Cycles failed ({e}), switch to Eevee")
         scene.render.engine = 'BLENDER_EEVEE_NEXT'
-        scene.eevee.taa_render_samples = SAMPLES
-        print(f"✅ Render engine: EEVEE | Samples: {SAMPLES}")
+        scene.eevee.taa_render_samples = 16
+        print("✅ Render engine: EEVEE (fallback)")
 
-
+# ═══════════════════════════════════════════
+# 2. FIND CHARACTER MESH (PRIORITIZE NAME)
+# ═══════════════════════════════════════════
 def find_character():
-    """Find the main character mesh in scene."""
-    possible_names = [
-        'Anime_Girl', 'AnimeGirl', 'Body',
-        'MBlab', 'Character', 'Mpfb', 'Base'
+    # اسامی احتمالی را به ترتیب اولویت چک کن
+    target_names = [
+        'Anime_Girl_Character',   # اسمی که در mpfb2_base.py ست کردیم
+        'AnimeGirl_Body',
+        'AnimeGirl',
+        'Body',
+        'Mpfb',
+        'Base'
     ]
-
-    for obj in bpy.data.objects:
-        if obj.type == 'MESH':
-            for name in possible_names:
-                if name.lower() in obj.name.lower():
-                    print(f"✅ Character found: {obj.name}")
+    for name in target_names:
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH' and name.lower() in obj.name.lower():
+                # مطمئن شو فقط یه مکعب پیش‌فرض نیست (تعداد رأس > 8)
+                if len(obj.data.vertices) > 100:
+                    print(f"✅ Character found: {obj.name} ({len(obj.data.vertices)} vertices)")
                     return obj
 
-    # Fallback: pick the mesh with the most vertices
-    mesh_objects = [obj for obj in bpy.data.objects if obj.type == 'MESH']
-    if mesh_objects:
-        chosen = max(mesh_objects, key=lambda o: len(o.data.vertices))
-        print(f"⚠️  Character auto-detected: {chosen.name}")
-        return chosen
+    # اگر هیچ کدام پیدا نشد، بزرگترین مش غیردوربین و غیر نوری را بردار
+    mesh_objs = [o for o in bpy.data.objects if o.type == 'MESH' and len(o.data.vertices) > 50]
+    if mesh_objs:
+        best = max(mesh_objs, key=lambda o: len(o.data.vertices))
+        print(f"⚠️  Fallback character: {best.name} ({len(best.data.vertices)} vertices)")
+        return best
 
-    print("❌ No mesh found in scene!")
+    print("❌ No suitable character mesh found!")
     return None
 
-
-def get_character_center(char):
-    """Calculate bounding box center of a mesh."""
-    bpy.context.view_layer.update()
-    vertices_world = [char.matrix_world @ v.co for v in char.data.vertices]
-    center = sum(vertices_world, Vector((0, 0, 0))) / len(vertices_world)
-    print(f"   Center: ({center.x:.2f}, {center.y:.2f}, {center.z:.2f})")
-    return center
-
-
+# ═══════════════════════════════════════════
+# 3. CAMERA SETUP / FIND
+# ═══════════════════════════════════════════
 def find_or_create_camera():
-    """Find existing camera or create a new one."""
     cam = bpy.data.objects.get('Cinematic_Camera')
     if not cam:
         cam = bpy.data.objects.get('Camera')
-
     if not cam:
         bpy.ops.object.camera_add(location=(0, -CAMERA_DISTANCE, 2))
         cam = bpy.context.object
         cam.name = "Cinematic_Camera"
-        print("📷 New camera created: Cinematic_Camera")
+        print("📷 New camera created")
     else:
-        print(f"📷 Using existing camera: {cam.name}")
-
+        print(f"📷 Using camera: {cam.name}")
     bpy.context.scene.camera = cam
     return cam
 
+# ═══════════════════════════════════════════
+# 4. CALCULATE BOUNDING BOX CENTER
+# ═══════════════════════════════════════════
+def get_character_center(char_obj):
+    bpy.context.view_layer.update()
+    verts = [char_obj.matrix_world @ v.co for v in char_obj.data.vertices]
+    center = sum(verts, Vector((0,0,0))) / len(verts)
+    print(f"   Center: ({center.x:.3f}, {center.y:.3f}, {center.z:.3f})")
+    return center
 
-def focus_camera_on_point(cam, target):
-    """Point camera towards a target position."""
+# ═══════════════════════════════════════════
+# 5. RENDER ONE ANGLE
+# ═══════════════════════════════════════════
+def render_angle(cam, target, angle_rad, filepath):
+    x = target.x + CAMERA_DISTANCE * math.sin(angle_rad)
+    y = target.y - CAMERA_DISTANCE * math.cos(angle_rad)
+    z = target.z * CAMERA_HEIGHT_FACTOR + target.z
+    cam.location = (x, y, z)
     direction = target - cam.location
     cam.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
-
-
-def render_single_angle(cam, center, angle_rad, angle_name):
-    """Render one angle and save to disk."""
-    x = center.x + CAMERA_DISTANCE * math.sin(angle_rad)
-    y = center.y - CAMERA_DISTANCE * math.cos(angle_rad)
-    z = center.z * CAMERA_HEIGHT_FACTOR + center.z
-
-    cam.location = (x, y, z)
-    focus_camera_on_point(cam, center)
-
-    filepath = os.path.join(OUTPUT_DIR, f"angle_{angle_name}.png")
     bpy.context.scene.render.filepath = filepath
     bpy.ops.render.render(write_still=True)
-
-    # Report file size
-    if os.path.exists(filepath):
-        size_kb = os.path.getsize(filepath) / 1024
-        print(f"   ✅ {angle_name:6s} → {size_kb:7.1f} KB")
-
-
-def render_all_angles(cam, center):
-    """Loop through all 4 angles and render each."""
-    print("\n📸 Rendering 4 angles...\n")
-
-    for angle_name, angle_rad in ANGLES.items():
-        render_single_angle(cam, center, angle_rad, angle_name)
-
-    print(f"\n🎉 All renders saved to: {OUTPUT_DIR}\n")
-
-
-def print_summary():
-    """Print final summary of generated files."""
-    print("=" * 55)
-    print("  📁 OUTPUT FILES  ")
-    print("=" * 55)
-
-    for angle_name in ANGLES:
-        filepath = os.path.join(OUTPUT_DIR, f"angle_{angle_name}.png")
-        if os.path.exists(filepath):
-            size_kb = os.path.getsize(filepath) / 1024
-            print(f"  • angle_{angle_name}.png  ({size_kb:.1f} KB)")
-        else:
-            print(f"  • angle_{angle_name}.png  ❌ MISSING!")
-
-    print("=" * 55)
-
+    size_kb = os.path.getsize(filepath) / 1024 if os.path.exists(filepath) else 0
+    print(f"   ✅ {os.path.basename(filepath)} ({size_kb:.1f} KB)")
 
 # ═══════════════════════════════════════════
-# MAIN EXECUTION
+# 6. MAIN
 # ═══════════════════════════════════════════
-
 def main():
-    print_banner()
+    print("=" * 55)
+    print("  📸 RENDER 4 ANGLES — Robust Edition  ")
+    print("=" * 55)
 
-    # 1. Ensure output directory
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     print(f"📁 Output: {OUTPUT_DIR}")
 
-    # 2. Setup
-    setup_render_settings()
+    setup_render()
 
-    # 3. Find character
     char = find_character()
     if not char:
-        raise RuntimeError("Cannot render: no character found!")
-
-    # 4. Get center
+        raise RuntimeError("No character to render! Check previous steps.")
     center = get_character_center(char)
 
-    # 5. Setup camera
     cam = find_or_create_camera()
 
-    # 6. Render all angles
-    render_all_angles(cam, center)
+    angles = {
+        "front": 0,
+        "left": math.radians(90),
+        "back": math.radians(180),
+        "right": math.radians(-90)
+    }
 
-    # 7. Summary
-    print_summary()
+    print("\n📸 Rendering...")
+    for name, angle in angles.items():
+        filepath = os.path.join(OUTPUT_DIR, f"angle_{name}.png")
+        render_angle(cam, center, angle, filepath)
 
-    print("✨ Done! 4-angle render complete.\n")
-
+    print("\n🎉 All 4 renders complete!")
+    for name in angles:
+        f = os.path.join(OUTPUT_DIR, f"angle_{name}.png")
+        if os.path.exists(f):
+            print(f"   • angle_{name}.png ({os.path.getsize(f)/1024:.1f} KB)")
+    print("=" * 55)
 
 if __name__ == "__main__":
     main()
