@@ -1,4 +1,4 @@
-name: TEST CharMorph Operators
+name: DEEP SEARCH CharMorph Operators
 
 on:
   workflow_dispatch:
@@ -7,9 +7,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Setup Blender 4.2
         run: |
           sudo apt-get update
@@ -27,21 +24,38 @@ jobs:
           mkdir -p ~/.config/blender/4.2/scripts/addons/
           cp -r /tmp/charmorph ~/.config/blender/4.2/scripts/addons/char_morph
 
-      - name: Enable and list operators
+      - name: Deep search for operators
         run: |
           blender --background --python-expr "
-          import addon_utils
+          import addon_utils, bpy, sys, inspect
+
           addon_utils.enable('char_morph')
-          
+
           print('='*60)
-          print('🔍 CharMorph Operators:')
+          print('🔍 DEEP SEARCH for CharMorph Operators')
           print('='*60)
-          
-          import bpy
-          for op in dir(bpy.ops.char_morph):
-              if not op.startswith('_'):
-                  print(f'  bpy.ops.char_morph.{op}()')
-          
+
+          found = []
+
+          # روش ۱: جستجو در تمام ماژول‌های char_morph
+          for mod_name, mod in sys.modules.items():
+              if 'char_morph' in mod_name.lower():
+                  for name, obj in inspect.getmembers(mod, inspect.isclass):
+                      if issubclass(obj, bpy.types.Operator) and obj != bpy.types.Operator:
+                          found.append(f'Module: {mod_name} | Class: {name}')
+                          print(f'  ✅ {mod_name}.{name}')
+
+          # روش ۲: جستجو در تمام subclasses ثبت‌شده
+          for cls in bpy.types.Operator.__subclasses__():
+              module = cls.__module__
+              if 'char_morph' in module.lower() or 'charmorph' in module.lower():
+                  if cls.__name__ not in [f.split('| Class: ')[-1] for f in found]:
+                      found.append(f'Module: {module} | Class: {cls.__name__}')
+                      print(f'  ✅ (subclass) {module}.{cls.__name__}')
+
+          if not found:
+              print('❌ No CharMorph operators found.')
+
           print('='*60)
-          print('✅ Done listing operators')
+          print('Search complete.')
           "
