@@ -1,95 +1,18 @@
-name: Generate 3D Character and Renders
+name: TEST MPFB2 DOWNLOAD
 
 on:
   workflow_dispatch:
-    inputs:
-      character_name:
-        description: 'اسم کاراکتر'
-        required: true
-        default: 'AnimeGirl'
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
-      # ۱. دریافت کد از ریپازیتوری
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ۲. نصب بلندر 3.6.15 LTS
-      - name: Setup Blender 3.6 LTS
+      - name: Test download MPFB2
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget unzip xz-utils
-          wget -q https://download.blender.org/release/Blender3.6/blender-3.6.15-linux-x64.tar.xz
-          tar -xf blender-3.6.15-linux-x64.tar.xz
-          echo "$(pwd)/blender-3.6.15-linux-x64" >> $GITHUB_PATH
-
-      # ۳. نصب MPFB2 از شاخه اصلی با رفع مشکل bl_info
-      - name: Install MPFB2 addon
-        run: |
-          git clone --depth 1 https://github.com/makehumancommunity/mpfb2.git /tmp/mpfb2
-          sed -i '1i bl_info = {}' /tmp/mpfb2/src/mpfb/__init__.py
-          mkdir -p ~/.config/blender/3.6/scripts/addons/
-          cp -r /tmp/mpfb2/src/mpfb ~/.config/blender/3.6/scripts/addons/
-          blender --background --python-expr "
-          import addon_utils
-          result = addon_utils.enable('mpfb')
-          if result:
-              print('✅ MPFB2 enabled successfully')
-          else:
-              print('❌ Failed to enable MPFB2')
-              exit(1)
-          "
-
-      # ۴. ساخت کاراکتر پایه (اسکریپت خودش char_customized.blend را ذخیره می‌کند)
-      - name: Step 1 - Generate base character
-        run: blender --background --python mpfb2_base.py
-
-      # ۵. بررسی فایل میانی
-      - name: Verify char_customized.blend
-        run: |
-          if [ -f char_customized.blend ]; then
-            echo "✅ char_customized.blend exists"
+          wget -q https://github.com/makehumancommunity/mpfb2/releases/download/v2.0.0-alpha/mpfb2-2.0.0-alpha.zip
+          if [ -f mpfb2-2.0.0-alpha.zip ]; then
+            echo "✅ DOWNLOAD OK"
+            ls -la mpfb2-2.0.0-alpha.zip
           else
-            echo "❌ char_customized.blend NOT found"
-            exit 1
+            echo "❌ DOWNLOAD FAILED"
           fi
-
-      # ۶. شخصی‌سازی کاراکتر (فایل میانی را باز کرده و char_final.blend را ذخیره می‌کند)
-      - name: Step 2 - Customize character
-        run: blender --background char_customized.blend --python bpy_customize.py
-
-      # ۷. بررسی فایل نهایی
-      - name: Verify char_final.blend
-        run: |
-          if [ -f char_final.blend ]; then
-            echo "✅ char_final.blend exists"
-          else
-            echo "❌ char_final.blend NOT found"
-            exit 1
-          fi
-
-      # ۸. رندر چهار نما (جلو، چپ، عقب، راست)
-      - name: Render 4 angles
-        run: blender --background char_final.blend --python render_4_angles.py
-
-      # ۹. بررسی خروجی رندرها
-      - name: Verify renders
-        run: |
-          if [ -d renders ] && [ "$(ls -A renders/*.png 2>/dev/null)" ]; then
-            echo "✅ Renders generated:"
-            ls -la renders/
-          else
-            echo "❌ No PNG files in renders/"
-            exit 1
-          fi
-
-      # ۱۰. آپلود آرتیفکت‌ها (فایل بلند نهایی و تصاویر)
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: character-and-renders
-          path: |
-            char_final.blend
-            renders/
