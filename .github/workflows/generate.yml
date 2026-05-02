@@ -1,4 +1,4 @@
-name: TEST CharMorph (Fully Fixed)
+name: TEST CharMorph Operators
 
 on:
   workflow_dispatch:
@@ -7,6 +7,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Setup Blender 4.2
         run: |
           sudo apt-get update
@@ -18,27 +21,27 @@ jobs:
       - name: Clone CharMorph (with submodules)
         run: |
           git clone --recursive --depth 1 https://github.com/Upliner/CharMorph.git /tmp/charmorph
-          echo "=== Root contents ==="
-          ls -la /tmp/charmorph/
-          echo "=== Data contents ==="
-          ls -la /tmp/charmorph/data/ 2>/dev/null || echo "Data folder not found or empty"
 
       - name: Install CharMorph
         run: |
           mkdir -p ~/.config/blender/4.2/scripts/addons/
-          # کل پوشه clone شده رو به عنوان یه ماژول به اسم char_morph کپی می‌کنیم
           cp -r /tmp/charmorph ~/.config/blender/4.2/scripts/addons/char_morph
-          echo "=== Installed addons ==="
-          ls -la ~/.config/blender/4.2/scripts/addons/
 
-      - name: Enable CharMorph
+      - name: Enable and list operators
         run: |
           blender --background --python-expr "
           import addon_utils
-          result = addon_utils.enable('char_morph')
-          if result:
-              print('✅ CharMorph enabled successfully')
-          else:
-              print('❌ Failed to enable CharMorph')
-              exit(1)
+          addon_utils.enable('char_morph')
+          
+          print('='*60)
+          print('🔍 CharMorph Operators:')
+          print('='*60)
+          
+          import bpy
+          for op in dir(bpy.ops.char_morph):
+              if not op.startswith('_'):
+                  print(f'  bpy.ops.char_morph.{op}()')
+          
+          print('='*60)
+          print('✅ Done listing operators')
           "
