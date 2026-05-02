@@ -1,4 +1,4 @@
-name: TEST MPFB2 DOWNLOAD
+name: TEST MPFB2 v2.0.0
 
 on:
   workflow_dispatch:
@@ -7,12 +7,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Test download MPFB2
+      - name: Test download MPFB2 v2.0.0
         run: |
-          wget -q https://github.com/makehumancommunity/mpfb2/releases/download/v2.0.0-alpha/mpfb2-2.0.0-alpha.zip
-          if [ -f mpfb2-2.0.0-alpha.zip ]; then
-            echo "✅ DOWNLOAD OK"
-            ls -la mpfb2-2.0.0-alpha.zip
+          wget -q https://github.com/makehumancommunity/mpfb2/releases/download/v2.0.0/mpfb2-2.0.0.zip
+          if [ -f mpfb2-2.0.0.zip ]; then
+            echo "✅ MPFB2 v2.0.0 DOWNLOADED"
+            ls -la mpfb2-2.0.0.zip
           else
-            echo "❌ DOWNLOAD FAILED"
+            echo "❌ FAILED"
           fi
