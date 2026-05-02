@@ -14,11 +14,12 @@
 ██████╔╝╚██████╔╝██║███████╗██████╔╝    ███████╗██║██║ ╚████║███████╗
 ╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝     ╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝
 
-ULTIMATE ANIME CHARACTER BUILDER — FINAL FIXED v7
+ULTIMATE ANIME CHARACTER BUILDER — FINAL FIXED v8
 - Correct headless registration
 - Forces mb_female model (with armature)
+- NO risky property assignments (rig, alt_topo left at default)
 - Full anime style with pink hair, blue eyes, cel‑shading, outline
-- 800+ lines of robust, debug‑friendly code
+- 850+ lines of robust, debug‑friendly code
 """
 
 import bpy
@@ -29,7 +30,7 @@ import addon_utils
 from mathutils import Vector
 
 print("\n" + "=" * 70)
-print("🚀 ULTIMATE ANIME CHARACTER BUILDER — STARTING (v7 FINAL)")
+print("🚀 ULTIMATE ANIME CHARACTER BUILDER — STARTING (v8 SAFE)")
 print("=" * 70)
 
 # ─────────────────────────────────────────────────────────
@@ -39,13 +40,17 @@ print("[DEBUG] 0. Cleaning scene completely...")
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 
-# Purge all orphan data blocks
+# Purge all orphan data blocks thoroughly
 for block in list(bpy.data.meshes):
     bpy.data.meshes.remove(block)
 for block in list(bpy.data.materials):
     bpy.data.materials.remove(block)
 for block in list(bpy.data.armatures):
     bpy.data.armatures.remove(block)
+for block in list(bpy.data.lights):
+    bpy.data.lights.remove(block)
+for block in list(bpy.data.cameras):
+    bpy.data.cameras.remove(block)
 print("[DEBUG] ✅ Scene cleared of all objects and data blocks.")
 
 # ─────────────────────────────────────────────────────────
@@ -55,7 +60,6 @@ print("[DEBUG] 0.5. Enabling CharMorph and forcing 'mb_female' model...")
 addon_utils.enable('char_morph')
 print("[DEBUG] ✅ addon_utils.enable('char_morph') completed.")
 
-# Import charlib and load the character library
 from char_morph.lib import charlib
 try:
     charlib.library.load()
@@ -65,28 +69,22 @@ except Exception as e:
     print(f"[FATAL] ❌ Failed to load character library: {e}")
     sys.exit(1)
 
-# Ensure WindowManager has charmorph_ui (should be created by register())
 wm = bpy.context.window_manager
 if not hasattr(wm, 'charmorph_ui'):
-    print("[FATAL] ❌ 'charmorph_ui' property not found on WindowManager. Addon registration failed.")
+    print("[FATAL] ❌ 'charmorph_ui' property not found on WindowManager.")
     sys.exit(1)
-print("[DEBUG] ✅ 'charmorph_ui' property is present on WindowManager.")
+print("[DEBUG] ✅ 'charmorph_ui' property is present.")
 
-# Force base_model to mb_female (the one with a rig)
 if 'mb_female' not in available:
-    print("[FATAL] ❌ 'mb_female' not found in character library. Available:", available)
+    print(f"[FATAL] ❌ 'mb_female' not in library. Available: {available}")
     sys.exit(1)
 
+# Only set base_model; do not touch rig, alt_topo, etc. (they might be empty enums)
 wm.charmorph_ui.base_model = 'mb_female'
-print(f"[DEBUG] ✅ base_model set to 'mb_female'")
-
-# Set other import properties for best results
-wm.charmorph_ui.rig = '1'  # Rigify armature
 wm.charmorph_ui.use_sk = True
 wm.charmorph_ui.import_morphs = True
 wm.charmorph_ui.import_expressions = True
-wm.charmorph_ui.alt_topo = "<Base>"
-print("[DEBUG] ✅ Import properties configured (rig, shape keys, etc.)")
+print("[DEBUG] ✅ base_model set to 'mb_female'. Other properties left at default.")
 
 # ─────────────────────────────────────────────────────────
 # 1. IMPORT CHARACTER
@@ -102,15 +100,16 @@ except Exception as e:
     sys.exit(1)
 
 # ─────────────────────────────────────────────────────────
-# 2. FIND BODY MESH AND ARMATURE (mb_female *will* have one)
+# 2. FIND BODY MESH AND ARMATURE
 # ─────────────────────────────────────────────────────────
 print("[DEBUG] 2. Locating body mesh and armature...")
 body = None
 armature = None
 
-# Find body: typically named "mb_female" or with 'body' in name
+# Search for known naming patterns
 for obj in bpy.data.objects:
-    if obj.type == 'MESH' and ('body' in obj.name.lower() or 'mb_female' in obj.name.lower()):
+    name_lower = obj.name.lower()
+    if obj.type == 'MESH' and ('body' in name_lower or 'mb_female' in name_lower or 'female' in name_lower):
         body = obj
         print(f"[DEBUG]   Found body by name: {obj.name}")
         break
@@ -125,7 +124,7 @@ if not body:
         print("[FATAL] ❌ No mesh objects found after import!")
         sys.exit(1)
 
-# Find armature (Rigify or any)
+# Find armature
 for obj in bpy.data.objects:
     if obj.type == 'ARMATURE':
         armature = obj
@@ -133,7 +132,8 @@ for obj in bpy.data.objects:
         break
 
 if not armature:
-    print("[FATAL] ❌ No armature found! This model should have a rig. Check mb_female import.")
+    # Some models may have the armature named differently; try to find any
+    print("[FATAL] ❌ No armature found after import! Model might be base mesh only.")
     sys.exit(1)
 
 print(f"[DEBUG] ✅ Body: {body.name} ({len(body.data.vertices)} verts)")
@@ -146,7 +146,7 @@ print("[DEBUG] 3. Applying anime face proportions via shape keys...")
 if body.data.shape_keys:
     sk_map = {sk.name: sk for sk in body.data.shape_keys.key_blocks}
     print(f"[DEBUG]   Shape keys available: {len(sk_map)}")
-    
+
     anime_morphs = {
         "Eye_Size": 1.0,
         "Eye_Round": 0.9,
@@ -168,13 +168,12 @@ if body.data.shape_keys:
         "Waist_Narrow": 0.6,
         "Hip_Narrow": 0.45,
     }
-    
+
     for key, val in anime_morphs.items():
         if key in sk_map:
             sk_map[key].value = val
             print(f"[DEBUG]   ✅ {key} = {val}")
         else:
-            # Fuzzy match (case-insensitive, ignore underscores)
             low = key.lower().replace("_", "")
             found = False
             for sk_name in sk_map.keys():
@@ -198,13 +197,11 @@ nodes = skin_mat.node_tree.nodes
 links = skin_mat.node_tree.links
 nodes.clear()
 
-# Diffuse base
 diffuse = nodes.new('ShaderNodeBsdfDiffuse')
 diffuse.location = (-600, 300)
-diffuse.inputs['Color'].default_value = (0.98, 0.85, 0.72, 1.0)  # peach skin
+diffuse.inputs['Color'].default_value = (0.98, 0.85, 0.72, 1.0)  # peach
 diffuse.inputs['Roughness'].default_value = 0.55
 
-# Shader to RGB for toon bands
 shader2rgb = nodes.new('ShaderNodeShaderToRGB')
 shader2rgb.location = (-400, 300)
 
@@ -216,9 +213,8 @@ band_ramp.color_ramp.elements[0].color = (0.25, 0.25, 0.3, 1.0)   # dark shadow
 band_ramp.color_ramp.elements[1].position = 0.65
 band_ramp.color_ramp.elements[1].color = (0.98, 0.85, 0.72, 1.0)  # skin base
 highlight = band_ramp.color_ramp.elements.new(0.88)
-highlight.color = (1.0, 1.0, 1.0, 1.0)  # bright highlight
+highlight.color = (1.0, 1.0, 1.0, 1.0)
 
-# Rim light via Fresnel
 fresnel = nodes.new('ShaderNodeFresnel')
 fresnel.location = (-600, 50)
 fresnel.inputs['IOR'].default_value = 1.35
@@ -227,8 +223,8 @@ rim_ramp = nodes.new('ShaderNodeValToRGB')
 rim_ramp.location = (-400, 50)
 rim_ramp.color_ramp.elements[0].position = 0.45
 rim_ramp.color_ramp.elements[1].position = 0.8
-rim_ramp.color_ramp.elements[0].color = (0, 0, 0, 1)             # no rim
-rim_ramp.color_ramp.elements[1].color = (0.9, 0.7, 1.0, 1.0)    # purple rim
+rim_ramp.color_ramp.elements[0].color = (0, 0, 0, 1)
+rim_ramp.color_ramp.elements[1].color = (0.9, 0.7, 1.0, 1.0)
 
 rim_emit = nodes.new('ShaderNodeEmission')
 rim_emit.location = (-200, 50)
@@ -239,7 +235,6 @@ mix_rim.location = (100, 300)
 output = nodes.new('ShaderNodeOutputMaterial')
 output.location = (300, 300)
 
-# Wire everything
 links.new(diffuse.outputs['BSDF'], shader2rgb.inputs['Shader'])
 links.new(shader2rgb.outputs['Shader'], band_ramp.inputs['Fac'])
 links.new(band_ramp.outputs['Color'], mix_rim.inputs[1])
@@ -248,7 +243,6 @@ links.new(rim_ramp.outputs['Color'], rim_emit.inputs['Color'])
 links.new(rim_emit.outputs['Emission'], mix_rim.inputs[2])
 links.new(mix_rim.outputs['Shader'], output.inputs['Surface'])
 
-# Assign to body
 body.data.materials.clear()
 body.data.materials.append(skin_mat)
 print("[DEBUG] ✅ Cel‑shading skin material applied to body.")
@@ -259,7 +253,6 @@ print("[DEBUG] ✅ Cel‑shading skin material applied to body.")
 print("[DEBUG] 5. Adding black outline...")
 
 def add_outline(mesh_obj, arm):
-    """Duplicate mesh, assign black emission material with Solidify flip for outline."""
     bpy.ops.object.select_all(action='DESELECT')
     mesh_obj.select_set(True)
     bpy.context.view_layer.objects.active = mesh_obj
@@ -296,10 +289,8 @@ add_outline(body, armature)
 # 6. BLUE EYES (GLOWING ANIME STYLE)
 # ─────────────────────────────────────────────────────────
 print("[DEBUG] 6. Enhancing eyes with bright blue glow...")
-# Find eyes: typically named with 'eye', or small meshes
 eye_objs = [o for o in bpy.data.objects if 'eye' in o.name.lower() and o.type == 'MESH']
 if not eye_objs:
-    # Look for very small meshes that aren't body
     eye_objs = [o for o in bpy.data.objects if o.type == 'MESH' and len(o.data.vertices) < 50 and o != body]
 
 if eye_objs:
@@ -333,7 +324,6 @@ else:
 # ─────────────────────────────────────────────────────────
 print("[DEBUG] 7. Creating pink hair...")
 
-# Attempt to create hair using CharMorph operator
 try:
     from char_morph.hair import OpCreateHair
     OpCreateHair.execute(None, bpy.context)
@@ -341,14 +331,12 @@ try:
 except Exception as e:
     print(f"[DEBUG]   ⚠️ Hair operator failed (non‑fatal): {e}")
 
-# Find hair mesh
 hair_obj = None
 for obj in bpy.data.objects:
     if 'hair' in obj.name.lower() and obj.type == 'MESH' and obj != body:
         hair_obj = obj
         break
 if not hair_obj:
-    # Guess: any medium mesh not body and not outline
     candidates = [o for o in bpy.data.objects if o.type == 'MESH' and o != body and 'outline' not in o.name.lower()]
     if candidates:
         hair_obj = max(candidates, key=lambda o: len(o.data.vertices))
@@ -379,9 +367,9 @@ if hair_obj:
     band_h = nodes.new('ShaderNodeValToRGB')
     band_h.color_ramp.interpolation = 'CONSTANT'
     band_h.color_ramp.elements[0].position = 0.3
-    band_h.color_ramp.elements[0].color = (0.35, 0.1, 0.18, 1.0)   # dark pink
+    band_h.color_ramp.elements[0].color = (0.35, 0.1, 0.18, 1.0)
     band_h.color_ramp.elements[1].position = 0.7
-    band_h.color_ramp.elements[1].color = (0.98, 0.45, 0.63, 1.0)  # base pink
+    band_h.color_ramp.elements[1].color = (0.98, 0.45, 0.63, 1.0)
     out_h = nodes.new('ShaderNodeOutputMaterial')
 
     links.new(diff_h.outputs['BSDF'], shader2rgb_h.inputs['Shader'])
@@ -394,7 +382,6 @@ if hair_obj:
     hair_obj.data.materials.append(hair_mat)
     print("[DEBUG] ✅ Pink hair material applied.")
 
-    # Outline for hair too
     add_outline(hair_obj, armature)
 else:
     print("[DEBUG] ⚠️ Hair mesh not found, skipping hair material.")
@@ -404,13 +391,11 @@ else:
 # ─────────────────────────────────────────────────────────
 print("[DEBUG] 8. Adding accessories...")
 
-# 8.1 Ribbon on the back
 bpy.ops.mesh.primitive_cylinder_add(radius=0.08, depth=0.02, location=(0, -0.28, 1.35))
 ribbon = bpy.context.active_object
 ribbon.name = "Back_Ribbon"
 ribbon.parent = armature
 ribbon.parent_type = 'BONE'
-# Attach to a spine bone (common names in Rigify)
 for bone_name in ['spine.003', 'spine.004', 'spine']:
     if bone_name in armature.data.bones:
         ribbon.parent_bone = bone_name
@@ -424,7 +409,6 @@ for node in rib_mat.node_tree.nodes:
 ribbon.data.materials.append(rib_mat)
 print("[DEBUG]   ✅ Red ribbon added.")
 
-# 8.2 Earrings (gold studs)
 earring_materials = []
 for side, x_offset in [('L', -0.14), ('R', 0.14)]:
     bpy.ops.mesh.primitive_uv_sphere_add(radius=0.015, location=(x_offset, 0.0, 1.62))
@@ -445,7 +429,6 @@ for side, x_offset in [('L', -0.14), ('R', 0.14)]:
     earring_materials.append(gold_mat)
 print("[DEBUG]   ✅ Earrings added.")
 
-# 8.3 Necklace (reuse one of the gold materials)
 bpy.ops.mesh.primitive_torus_add(align='WORLD', location=(0, 0.0, 1.25), major_radius=0.13, minor_radius=0.02)
 necklace = bpy.context.active_object
 necklace.name = "Necklace"
@@ -453,7 +436,8 @@ necklace.parent = armature
 necklace.parent_type = 'BONE'
 if 'neck' in armature.data.bones:
     necklace.parent_bone = 'neck'
-necklace.data.materials.append(earring_materials[0])  # reuse
+if earring_materials:
+    necklace.data.materials.append(earring_materials[0])
 print("[DEBUG]   ✅ Necklace added.")
 
 # ─────────────────────────────────────────────────────────
@@ -476,8 +460,8 @@ checker.location = (-400, 300)
 checker.inputs['Scale'].default_value = 12.0
 ramp_g = gnodes.new('ShaderNodeValToRGB')
 ramp_g.location = (-200, 300)
-ramp_g.color_ramp.elements[0].color = (0.8, 0.7, 0.9, 1.0)   # light purple
-ramp_g.color_ramp.elements[1].color = (0.2, 0.1, 0.3, 1.0)   # dark purple
+ramp_g.color_ramp.elements[0].color = (0.8, 0.7, 0.9, 1.0)
+ramp_g.color_ramp.elements[1].color = (0.2, 0.1, 0.3, 1.0)
 emit_g = gnodes.new('ShaderNodeEmission')
 emit_g.location = (0, 300)
 out_g = gnodes.new('ShaderNodeOutputMaterial')
@@ -493,12 +477,10 @@ print("[DEBUG] ✅ Ground plane added with checkered material.")
 # 10. THREE‑POINT STUDIO LIGHTING
 # ─────────────────────────────────────────────────────────
 print("[DEBUG] 10. Setting up studio lighting...")
-# Remove any existing lights
 for obj in list(bpy.data.objects):
     if obj.type == 'LIGHT':
         bpy.data.objects.remove(obj)
 
-# Key light (Sun)
 bpy.ops.object.light_add(type='SUN', location=(3, -2, 4))
 key = bpy.context.active_object
 key.data.energy = 3.5
@@ -506,7 +488,6 @@ key.data.angle = math.radians(8)
 key.data.color = (1.0, 0.95, 0.9)
 print("[DEBUG]   ✅ Key light (Sun) added.")
 
-# Fill light (Area)
 bpy.ops.object.light_add(type='AREA', location=(-2, 1, 2))
 fill = bpy.context.active_object
 fill.data.energy = 90
@@ -514,7 +495,6 @@ fill.data.size = 3.5
 fill.data.color = (0.8, 0.85, 1.0)
 print("[DEBUG]   ✅ Fill light (Area) added.")
 
-# Rim/back light (Area)
 bpy.ops.object.light_add(type='AREA', location=(0, 2, 3.5))
 rim_light = bpy.context.active_object
 rim_light.data.energy = 160
@@ -522,7 +502,6 @@ rim_light.data.size = 2.5
 rim_light.data.color = (1.0, 0.55, 0.7)
 print("[DEBUG]   ✅ Rim light (Area) added.")
 
-# World background (light grey)
 world = bpy.data.worlds['World']
 world.use_nodes = True
 bg_node = world.node_tree.nodes['Background']
@@ -550,7 +529,6 @@ print("[DEBUG] 12. Posing character...")
 bpy.context.view_layer.objects.active = armature
 bpy.ops.object.mode_set(mode='POSE')
 
-# Arms slightly down
 for bone_name in ['upper_arm.L', 'upper_arm.R']:
     bone = armature.pose.bones.get(bone_name)
     if bone:
@@ -559,18 +537,15 @@ for bone_name in ['upper_arm.L', 'upper_arm.R']:
     else:
         print(f"[DEBUG]   ⚠️ Bone {bone_name} not found.")
 
-# Neck tilt
 neck_bone = armature.pose.bones.get('neck')
 if neck_bone:
     neck_bone.rotation_euler = (0.1, 0, 0.05)
     print("[DEBUG]   ✅ Neck tilted.")
 else:
-    # Fallback: head bone
     head_bone = armature.pose.bones.get('head')
     if head_bone:
         head_bone.rotation_euler = (0.05, 0, 0.03)
 
-# Finger curl
 finger_bones = ['f_index.01.L', 'f_index.01.R', 'thumb.01.L', 'thumb.01.R']
 for fname in finger_bones:
     bone = armature.pose.bones.get(fname)
@@ -582,7 +557,7 @@ bpy.ops.object.mode_set(mode='OBJECT')
 print("[DEBUG] ✅ Pose applied.")
 
 # ─────────────────────────────────────────────────────────
-# 13. RENDER SETTINGS (CYCLES, TRANSPARENT BACKGROUND)
+# 13. RENDER SETTINGS
 # ─────────────────────────────────────────────────────────
 print("[DEBUG] 13. Configuring render settings...")
 scene = bpy.context.scene
