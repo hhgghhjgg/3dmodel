@@ -1,13 +1,23 @@
-name: TEST MPFB2 FROM SOURCE FIXED
+name: Generate 3D Character and Renders
 
 on:
   workflow_dispatch:
+    inputs:
+      character_name:
+        description: 'اسم کاراکتر'
+        required: true
+        default: 'AnimeGirl'
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Blender 4.2
+      # ۱. دریافت کد از ریپازیتوری
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ۲. نصب بلندر 4.2.12
+      - name: Setup Blender 4.2 LTS
         run: |
           sudo apt-get update
           sudo apt-get install -y wget unzip xz-utils
@@ -15,32 +25,88 @@ jobs:
           tar -xf blender-4.2.12-linux-x64.tar.xz
           echo "$(pwd)/blender-4.2.12-linux-x64" >> $GITHUB_PATH
 
-      - name: Clone and fix MPFB2
+      # ۳. کلون و تعمیر MPFB2
+      - name: Install MPFB2 from source (fixed)
         run: |
           git clone --depth 1 https://github.com/makehumancommunity/mpfb2.git /tmp/mpfb2
           
-          # پاک کردن fake_bl_info و جایگزینی با bl_info واقعی
-          sed -i 's/^fake_bl_info = {/bl_info = {/' /tmp/mpfb2/src/mpfb/__init__.py
+          # اضافه کردن fake_bl_info که کد MPFB2 نیاز دارد
+          sed -i '1i fake_bl_info = {"version": (2, 0, 0)}' /tmp/mpfb2/src/mpfb/__init__.py
           
           mkdir -p ~/.config/blender/4.2/scripts/addons/
           cp -r /tmp/mpfb2/src/mpfb ~/.config/blender/4.2/scripts/addons/
           
-          # تست فعال‌سازی
+          # فعال‌سازی افزونه
           blender --background --python-expr "
           import addon_utils, sys
           try:
               result = addon_utils.enable('mpfb')
               if result:
-                  print('✅ MPFB2 ENABLED SUCCESSFULLY')
+                  print('✅ MPFB2 enabled successfully')
               else:
-                  print('❌ enable() returned None')
+                  print('❌ Failed to enable MPFB2')
                   sys.exit(1)
           except Exception as e:
               print(f'❌ ERROR: {e}')
               sys.exit(1)
           "
 
-      - name: Show what we did
+      # ۴. ساخت کاراکتر پایه (اسکریپت خودش char_customized.blend ذخیره می‌کند)
+      - name: Step 1 - Generate base character
+        run: blender --background --python mpfb2_base.py
+
+      # ۵. دیباگ در صورت شکست
+      - name: Debug missing char_customized.blend
+        if: failure()
         run: |
-          echo "First 5 lines of __init__.py:"
-          head -5 /tmp/mpfb2/src/mpfb/__init__.py
+          echo "Workspace contents:"
+          ls -la
+          find /home/runner -name "*.blend" 2>/dev/null || echo "No blend files found"
+
+      # ۶. بررسی فایل میانی
+      - name: Verify char_customized.blend
+        run: |
+          if [ -f char_customized.blend ]; then
+            echo "✅ char_customized.blend exists"
+          else
+            echo "❌ char_customized.blend NOT found"
+            exit 1
+          fi
+
+      # ۷. شخصی‌سازی کاراکتر
+      - name: Step 2 - Customize character
+        run: blender --background char_customized.blend --python bpy_customize.py
+
+      # ۸. بررسی فایل نهایی
+      - name: Verify char_final.blend
+        run: |
+          if [ -f char_final.blend ]; then
+            echo "✅ char_final.blend exists"
+          else
+            echo "❌ char_final.blend NOT found"
+            exit 1
+          fi
+
+      # ۹. رندر ۴ نما
+      - name: Render 4 angles
+        run: blender --background char_final.blend --python render_4_angles.py
+
+      # ۱۰. بررسی رندرها
+      - name: Verify renders
+        run: |
+          if [ -d renders ] && [ "$(ls -A renders/*.png 2>/dev/null)" ]; then
+            echo "✅ Renders generated:"
+            ls -la renders/
+          else
+            echo "❌ No PNG files in renders/"
+            exit 1
+          fi
+
+      # ۱۱. آپلود آرتیفکت‌ها
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: character-and-renders
+          path: |
+            char_final.blend
+            renders/
