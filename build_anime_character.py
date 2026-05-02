@@ -14,10 +14,10 @@
 ██████╔╝╚██████╔╝██║███████╗██████╔╝    ███████╗██║██║ ╚████║███████╗
 ╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝     ╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝
 
-ULTIMATE ANIME CHARACTER BUILDER — FINAL FIXED v9
+ULTIMATE ANIME CHARACTER BUILDER — FINAL FIXED v10
 - Correct headless registration
 - Forces mb_female model
-- **Runs finalize to create armature (rig)**
+- **Rigify activated directly inside script before finalize**
 - Full anime style: pink hair, blue eyes, cel‑shading, outline
 - 850+ lines with heavy debug logging
 """
@@ -30,7 +30,7 @@ import addon_utils
 from mathutils import Vector
 
 print("\n" + "=" * 70)
-print("🚀 ULTIMATE ANIME CHARACTER BUILDER — STARTING (v9 FINAL)")
+print("🚀 ULTIMATE ANIME CHARACTER BUILDER — STARTING (v10 FINAL)")
 print("=" * 70)
 
 # ─────────────────────────────────────────────────────────
@@ -40,7 +40,6 @@ print("[DEBUG] 0. Cleaning scene completely...")
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 
-# Purge all orphan data blocks thoroughly
 for block in list(bpy.data.meshes):
     bpy.data.meshes.remove(block)
 for block in list(bpy.data.materials):
@@ -79,7 +78,6 @@ if 'mb_female' not in available:
     print(f"[FATAL] ❌ 'mb_female' not in library. Available: {available}")
     sys.exit(1)
 
-# Set base_model to mb_female; do NOT set rig/alt_topo now (they may be empty enums)
 wm.charmorph_ui.base_model = 'mb_female'
 wm.charmorph_ui.use_sk = True
 wm.charmorph_ui.import_morphs = True
@@ -100,7 +98,7 @@ except Exception as e:
     sys.exit(1)
 
 # ─────────────────────────────────────────────────────────
-# 2. FIND BODY MESH AND ENSURE ARMATURE (FINALIZE)
+# 2. FIND BODY MESH AND ENSURE ARMATURE (FINALIZE WITH RIGIFY)
 # ─────────────────────────────────────────────────────────
 print("[DEBUG] 2. Locating body mesh and ensuring armature...")
 body = None
@@ -123,42 +121,49 @@ if not body:
         print("[FATAL] ❌ No mesh objects found after import!")
         sys.exit(1)
 
-# Check if armature already exists (unlikely but possible)
+# Check if armature already exists
 for obj in bpy.data.objects:
     if obj.type == 'ARMATURE':
         armature = obj
         print(f"[DEBUG]   Found existing armature: {obj.name}")
         break
 
-# If no armature, run finalize to create the rig
+# If no armature, we must finalize with Rigify enabled
 if not armature:
-    print("[DEBUG]   No armature found. Running finalize to generate rig...")
+    print("[DEBUG]   No armature found. Running finalize with Rigify...")
+
+    # *** CRITICAL: Enable Rigify addon right here ***
+    print("[DEBUG]   Enabling Rigify addon...")
+    if not addon_utils.check('rigify')[1]:  # check if enabled
+        addon_utils.enable('rigify')
+        print("[DEBUG]   ✅ Rigify enabled.")
+    else:
+        print("[DEBUG]   Rigify already enabled.")
+
+    # Ensure UI properties for rig are set (may be empty enum initially, but we try)
     ui = wm.charmorph_ui
-    # Ensure rig property is set to a valid value (after import, enum might be populated)
     try:
         if hasattr(ui, 'rig'):
-            # Try to get enum items
             rig_items = ui.rna_type.properties['rig'].enum_items
             if any(item.identifier == '1' for item in rig_items):
-                ui.rig = '1'   # Rigify
+                ui.rig = '1'  # Rigify
                 print("[DEBUG]   Set rig to '1' (Rigify).")
             elif rig_items:
                 first_rig = rig_items[0].identifier
                 ui.rig = first_rig
                 print(f"[DEBUG]   Set rig to first available: '{first_rig}'.")
             else:
-                print("[WARN]   No rig options available; finalize may still work.")
+                print("[WARN]   No rig items; will just call finalize.")
         else:
-            print("[WARN]   'rig' property not found; skipping rig setup.")
+            print("[WARN]   'rig' property not found; skipping.")
     except Exception as e:
-        print(f"[WARN]   Could not set rig property: {e}. Continuing...")
+        print(f"[WARN]   Could not set rig property: {e}")
 
-    # Also set fin_rig if exists (some versions use it)
     if hasattr(ui, 'fin_rig'):
         ui.fin_rig = True
         print("[DEBUG]   Set fin_rig = True.")
 
-    # Now execute the finalize operator
+    # Now execute finalize
     try:
         bpy.ops.charmorph.finalize()
         print("[DEBUG]   ✅ Finalize operator executed.")
@@ -173,7 +178,7 @@ if not armature:
             print(f"[DEBUG]   ✅ Armature found after finalize: {obj.name}")
             break
     if not armature:
-        print("[FATAL] ❌ Finalize completed but still no armature found!")
+        print("[FATAL] ❌ Finalize completed but still no armature!")
         sys.exit(1)
 else:
     print("[DEBUG] ✅ Using existing armature (no need to finalize).")
