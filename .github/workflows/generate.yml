@@ -16,29 +16,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ۲. نصب Blender 4.0.2
-      - name: Setup Blender
+      # ۲. نصب Blender 4.2.12 (سازگار با MPFB2)
+      - name: Setup Blender 4.2.12
         run: |
           sudo apt-get update
           sudo apt-get install -y wget unzip xz-utils
-          wget -q https://download.blender.org/release/Blender4.0/blender-4.0.2-linux-x64.tar.xz
-          tar -xf blender-4.0.2-linux-x64.tar.xz
-          echo "$(pwd)/blender-4.0.2-linux-x64" >> $GITHUB_PATH
+          wget -q https://download.blender.org/release/Blender4.2/blender-4.2.12-linux-x64.tar.xz
+          tar -xf blender-4.2.12-linux-x64.tar.xz
+          echo "$(pwd)/blender-4.2.12-linux-x64" >> $GITHUB_PATH
 
-      # ۳. نصب افزونه MPFB2 (مستقیم از مخزن)
+      # ۳. نصب افزونه MPFB2 (مستقیم از مخزن با رفع مشکل bl_info)
       - name: Install MPFB2 addon
         run: |
           git clone --depth 1 https://github.com/makehumancommunity/mpfb2.git /tmp/mpfb2
-          mkdir -p ~/.config/blender/4.0/scripts/addons/
-          cp -r /tmp/mpfb2/src/mpfb ~/.config/blender/4.0/scripts/addons/
-          # فعال‌سازی افزونه
+          sed -i '1i bl_info = {}' /tmp/mpfb2/src/mpfb/__init__.py
+          mkdir -p ~/.config/blender/4.2/scripts/addons/
+          cp -r /tmp/mpfb2/src/mpfb ~/.config/blender/4.2/scripts/addons/
           blender --background --python-expr "
           import addon_utils
-          addon_utils.enable('mpfb')
-          print('✅ MPFB2 enabled')
+          result = addon_utils.enable('mpfb')
+          if result:
+              print('✅ MPFB2 enabled successfully')
+          else:
+              print('❌ Failed to enable MPFB2')
+              exit(1)
           "
 
-      # ۴. ساخت کاراکتر پایه (اسکریپت خودش char_customized.blend ذخیره می‌کنه)
+      # ۴. ساخت کاراکتر پایه (اسکریپت خودش char_customized.blend ذخیره می‌کند)
       - name: Step 1 - Generate base character
         run: blender --background --python mpfb2_base.py
 
@@ -52,7 +56,7 @@ jobs:
             exit 1
           fi
 
-      # ۶. شخصی‌سازی (روی char_customized.blend اجرا و char_final.blend ذخیره می‌شه)
+      # ۶. شخصی‌سازی (روی char_customized.blend اجرا و char_final.blend ذخیره می‌شود)
       - name: Step 2 - Customize character
         run: blender --background char_customized.blend --python bpy_customize.py
 
