@@ -1,4 +1,4 @@
-name: TEST CharMorph
+name: TEST CharMorph (Fully Fixed)
 
 on:
   workflow_dispatch:
@@ -15,18 +15,19 @@ jobs:
           tar -xf blender-4.2.12-linux-x64.tar.xz
           echo "$(pwd)/blender-4.2.12-linux-x64" >> $GITHUB_PATH
 
-      - name: Clone CharMorph
+      - name: Clone CharMorph (with submodules)
         run: |
-          git clone --depth 1 https://github.com/animate1978/CharMorph.git /tmp/charmorph
-          echo "=== Contents of /tmp/charmorph ==="
+          git clone --recursive --depth 1 https://github.com/Upliner/CharMorph.git /tmp/charmorph
+          echo "=== Root contents ==="
           ls -la /tmp/charmorph/
-          echo "=== Contents of /tmp/charmorph/src ==="
-          ls -la /tmp/charmorph/src/
+          echo "=== Data contents ==="
+          ls -la /tmp/charmorph/data/ 2>/dev/null || echo "Data folder not found or empty"
 
       - name: Install CharMorph
         run: |
           mkdir -p ~/.config/blender/4.2/scripts/addons/
-          cp -r /tmp/charmorph/src/char_morph ~/.config/blender/4.2/scripts/addons/
+          # کل پوشه clone شده رو به عنوان یه ماژول به اسم char_morph کپی می‌کنیم
+          cp -r /tmp/charmorph ~/.config/blender/4.2/scripts/addons/char_morph
           echo "=== Installed addons ==="
           ls -la ~/.config/blender/4.2/scripts/addons/
 
