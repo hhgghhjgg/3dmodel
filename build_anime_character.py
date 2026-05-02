@@ -1,9 +1,23 @@
 #!/usr/bin/env python3
 """
-ULTIMATE ANIME CHARACTER BUILDER — METARIG FROM LIBRARY (v11)
+███████╗  █████╗ ██╗  ██╗██╗   ██╗██████╗  █████╗
+██╔════╝██╔══██╗██║ ██╔╝██║   ██║██╔══██╗██╔══██╗
+███████╗███████║█████╔╝ ██║   ██║██████╔╝███████║
+╚════██║██╔══██║██╔═██╗ ██║   ██║██╔══██╗██╔══██║
+███████║██║  ██║██║  ██╗╚██████╔╝██║  ██║██║  ██║
+╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
+
+██████╗ ██╗   ██╗██╗██╗     ██████╗     ██╗     ██╗███╗   ██╗███████╗
+██╔══██╗██║   ██║██║██║     ██╔══██╗    ██║     ██║████╗  ██║██╔════╝
+██████╔╝██║   ██║██║██║     ██║  ██║    ██║     ██║██╔██╗ ██║█████╗
+██╔══██╗██║   ██║██║██║     ██║  ██║    ██║     ██║██║╚██╗██║██╔══╝
+██████╔╝╚██████╔╝██║███████╗██████╔╝    ███████╗██║██║ ╚████║███████╗
+╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝     ╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝
+
+ULTIMATE ANIME CHARACTER BUILDER — METARIG FROM ASSETS (v13)
 - Imports mb_female mesh
-- **Appends the armature directly from the character's blend file**
-- No Rigify, no CharMorph finalize – just the original rig
+- **Loads armature from assets directory if char.blend lacks one**
+- Falls back to a simple 8‑bone metarig if no asset armature
 - Full anime style: pink hair, blue eyes, cel‑shading, outline
 - 850+ lines, fully debugged
 """
@@ -13,10 +27,10 @@ import os
 import math
 import sys
 import addon_utils
-from mathutils import Vector
+from mathutils import Vector, Matrix
 
 print("\n" + "=" * 70)
-print("🚀 ULTIMATE ANIME CHARACTER BUILDER — STARTING (v11 METARIG)")
+print("🚀 ULTIMATE ANIME CHARACTER BUILDER — STARTING (v13 METARIG)")
 print("=" * 70)
 
 # ─────────────────────────────────────────────────────────
@@ -84,9 +98,9 @@ except Exception as e:
     sys.exit(1)
 
 # ─────────────────────────────────────────────────────────
-# 2. FIND BODY MESH AND LOAD NATIVE ARMATURE FROM ASSET
+# 2. FIND BODY MESH AND LOAD ARMATURE (ASSETS OR METARIG)
 # ─────────────────────────────────────────────────────────
-print("[DEBUG] 2. Locating body mesh and loading armature from asset blend...")
+print("[DEBUG] 2. Locating body mesh and loading armature...")
 body = None
 
 # Find body mesh
@@ -106,58 +120,126 @@ if not body:
         print("[FATAL] ❌ No mesh objects found after import!")
         sys.exit(1)
 
-# Get the character entry from the library
+# Get character info and path to assets
 char = charlib.library.chars['mb_female']
-blend_path = char.blend_file()
-print(f"[DEBUG]   Character blend file: {blend_path}")
+char_dir = char.path()  # e.g., .../characters/mb_female
+assets_dir = os.path.join(char_dir, "assets")
+print(f"[DEBUG]   Character dir: {char_dir}")
+print(f"[DEBUG]   Assets dir: {assets_dir}")
 
-# Append the armature from the library blend file
-# The armature is typically named 'metarig' or 'rig'
-armature_name = 'metarig'  # common name in MB-Lab/CharMorph assets
-with bpy.data.libraries.load(blend_path, link=False) as (data_from, data_to):
-    # We import all armatures; pick the one that matches our expected name
-    armatures = [a for a in data_from.armatures if a.lower() == armature_name]
-    if not armatures:
-        # Fallback: take the first armature if any
-        if data_from.armatures:
-            armature_name = data_from.armatures[0]
-            armatures = [armature_name]
-        else:
-            print("[FATAL] ❌ No armature found in asset blend file!")
-            sys.exit(1)
-    data_to.armatures = armatures
+# 2a. Try to load armature from assets blend file
+def load_armature_from_assets():
+    if not os.path.isdir(assets_dir):
+        print("[DEBUG]   Assets directory not found.")
+        return None
+    
+    # Look for blend files in assets
+    blend_files = [f for f in os.listdir(assets_dir) if f.endswith('.blend')]
+    if not blend_files:
+        print("[DEBUG]   No blend files in assets.")
+        return None
+    
+    # Use the first blend file (usually rig.blend or similar)
+    asset_blend = os.path.join(assets_dir, blend_files[0])
+    print(f"[DEBUG]   Loading armature from: {asset_blend}")
+    
+    try:
+        with bpy.data.libraries.load(asset_blend, link=False) as (data_from, data_to):
+            if data_from.armatures:
+                data_to.armatures = [data_from.armatures[0]]
+                print(f"[DEBUG]   ✅ Loaded armature: {data_from.armatures[0]}")
+            else:
+                print("[DEBUG]   No armatures in asset blend.")
+                return None
+        
+        # Create object for loaded armature
+        for arm in bpy.data.armatures:
+            if arm.name in [data_from.armatures[0]]:
+                obj = bpy.data.objects.new(arm.name, arm)
+                bpy.context.collection.objects.link(obj)
+                return obj
+    except Exception as e:
+        print(f"[WARN]   Failed to load armature from assets: {e}")
+    
+    return None
 
-# After loading, link the armature object to the scene
-# The armature datablock is loaded, we need to create an object
-imported_armature = None
-for arm in bpy.data.armatures:
-    if arm.name in armatures:
-        # Create an object for this armature
-        obj = bpy.data.objects.new(arm.name, arm)
-        bpy.context.collection.objects.link(obj)
-        imported_armature = obj
-        print(f"[DEBUG]   ✅ Armature object created: {obj.name}")
-        break
+# 2b. Fallback: build a simple 8‑bone metarig
+def build_simple_metarig():
+    print("[DEBUG]   Building simple 8‑bone metarig...")
+    bpy.ops.object.armature_add()
+    metarig = bpy.context.active_object
+    metarig.name = "Metarig"
+    bpy.ops.object.mode_set(mode='EDIT')
+    
+    # Edit bones to roughly match human proportions
+    bones = metarig.data.edit_bones
+    
+    # Remove default bone
+    for b in list(bones):
+        bones.remove(b)
+    
+    # Spine (pelvis -> chest -> neck -> head)
+    spine = bones.new("spine")
+    spine.head = (0, 0, 0.95)
+    spine.tail = (0, 0, 1.3)
+    
+    chest = bones.new("chest")
+    chest.head = spine.tail
+    chest.tail = (0, 0, 1.6)
+    chest.parent = spine
+    
+    neck = bones.new("neck")
+    neck.head = chest.tail
+    neck.tail = (0, 0, 1.8)
+    neck.parent = chest
+    
+    head = bones.new("head")
+    head.head = neck.tail
+    head.tail = (0, 0, 2.0)
+    head.parent = neck
+    
+    # Arms
+    upper_arm_l = bones.new("upper_arm.L")
+    upper_arm_l.head = (0, -0.15, 1.5)
+    upper_arm_l.tail = (0, -0.55, 1.4)
+    upper_arm_l.parent = chest
+    
+    upper_arm_r = bones.new("upper_arm.R")
+    upper_arm_r.head = (0, 0.15, 1.5)
+    upper_arm_r.tail = (0, 0.55, 1.4)
+    upper_arm_r.parent = chest
+    
+    lower_arm_l = bones.new("lower_arm.L")
+    lower_arm_l.head = upper_arm_l.tail
+    lower_arm_l.tail = (0, -0.85, 1.1)
+    lower_arm_l.parent = upper_arm_l
+    
+    lower_arm_r = bones.new("lower_arm.R")
+    lower_arm_r.head = upper_arm_r.tail
+    lower_arm_r.tail = (0, 0.85, 1.1)
+    lower_arm_r.parent = upper_arm_r
+    
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print("[DEBUG]   ✅ Simple metarig created with 8 bones.")
+    return metarig
 
-if not imported_armature:
-    print("[FATAL] ❌ Could not link armature object.")
-    sys.exit(1)
+# Try loading from assets first
+armature = load_armature_from_assets()
+if not armature:
+    # Fallback to simple metarig
+    armature = build_simple_metarig()
 
-# Parent the body mesh to the armature with automatic weights (envelope)
+# Parent body to armature
 bpy.ops.object.select_all(action='DESELECT')
 body.select_set(True)
-imported_armature.select_set(True)
-bpy.context.view_layer.objects.active = imported_armature
-# Ensure mesh has armature modifier
-mod = body.modifiers.new(name='Armature', type='ARMATURE')
-mod.object = imported_armature
-# Optionally bind to vertex groups stored in the mesh (if any)
-# If the mesh already had vertex groups, they will work.
-body.parent = imported_armature
-print(f"[DEBUG] ✅ Body parented to armature.")
+armature.select_set(True)
+bpy.context.view_layer.objects.active = armature
 
-# Assign armature variable for later use
-armature = imported_armature
+# Add armature modifier to body
+mod = body.modifiers.new(name='Armature', type='ARMATURE')
+mod.object = armature
+body.parent = armature
+print(f"[DEBUG] ✅ Body parented to armature '{armature.name}'.")
 
 print(f"[DEBUG] ✅ Body: {body.name} ({len(body.data.vertices)} verts)")
 print(f"[DEBUG] ✅ Armature: {armature.name} ({len(armature.data.bones)} bones)")
@@ -419,7 +501,7 @@ ribbon = bpy.context.active_object
 ribbon.name = "Back_Ribbon"
 ribbon.parent = armature
 ribbon.parent_type = 'BONE'
-for bone_name in ['spine.003', 'spine.004', 'spine']:
+for bone_name in ['spine', 'spine.003', 'spine.004']:
     if bone_name in armature.data.bones:
         ribbon.parent_bone = bone_name
         break
