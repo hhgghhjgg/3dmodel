@@ -1,4 +1,4 @@
-name: TEST MPFB2 v2.0.0
+name: TEST MPFB2 FROM SOURCE FIXED
 
 on:
   workflow_dispatch:
@@ -7,12 +7,40 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Test download MPFB2 v2.0.0
+      - name: Setup Blender 4.2
         run: |
-          wget -q https://github.com/makehumancommunity/mpfb2/releases/download/v2.0.0/mpfb2-2.0.0.zip
-          if [ -f mpfb2-2.0.0.zip ]; then
-            echo "✅ MPFB2 v2.0.0 DOWNLOADED"
-            ls -la mpfb2-2.0.0.zip
-          else
-            echo "❌ FAILED"
-          fi
+          sudo apt-get update
+          sudo apt-get install -y wget unzip xz-utils
+          wget -q https://download.blender.org/release/Blender4.2/blender-4.2.12-linux-x64.tar.xz
+          tar -xf blender-4.2.12-linux-x64.tar.xz
+          echo "$(pwd)/blender-4.2.12-linux-x64" >> $GITHUB_PATH
+
+      - name: Clone and fix MPFB2
+        run: |
+          git clone --depth 1 https://github.com/makehumancommunity/mpfb2.git /tmp/mpfb2
+          
+          # پاک کردن fake_bl_info و جایگزینی با bl_info واقعی
+          sed -i 's/^fake_bl_info = {/bl_info = {/' /tmp/mpfb2/src/mpfb/__init__.py
+          
+          mkdir -p ~/.config/blender/4.2/scripts/addons/
+          cp -r /tmp/mpfb2/src/mpfb ~/.config/blender/4.2/scripts/addons/
+          
+          # تست فعال‌سازی
+          blender --background --python-expr "
+          import addon_utils, sys
+          try:
+              result = addon_utils.enable('mpfb')
+              if result:
+                  print('✅ MPFB2 ENABLED SUCCESSFULLY')
+              else:
+                  print('❌ enable() returned None')
+                  sys.exit(1)
+          except Exception as e:
+              print(f'❌ ERROR: {e}')
+              sys.exit(1)
+          "
+
+      - name: Show what we did
+        run: |
+          echo "First 5 lines of __init__.py:"
+          head -5 /tmp/mpfb2/src/mpfb/__init__.py
