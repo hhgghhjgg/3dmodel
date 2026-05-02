@@ -15,20 +15,29 @@ jobs:
           tar -xf blender-4.2.12-linux-x64.tar.xz
           echo "$(pwd)/blender-4.2.12-linux-x64" >> $GITHUB_PATH
 
-      - name: Install CharMorph
+      - name: Clone CharMorph
         run: |
           git clone --depth 1 https://github.com/animate1978/CharMorph.git /tmp/charmorph
-          mkdir -p ~/.config/blender/4.2/scripts/addons/
-          cp -r /tmp/charmorph/CharMorph ~/.config/blender/4.2/scripts/addons/
+          echo "=== Contents of /tmp/charmorph ==="
+          ls -la /tmp/charmorph/
+          echo "=== Contents of /tmp/charmorph/src ==="
+          ls -la /tmp/charmorph/src/
 
-      - name: Test enable
+      - name: Install CharMorph
+        run: |
+          mkdir -p ~/.config/blender/4.2/scripts/addons/
+          cp -r /tmp/charmorph/src/char_morph ~/.config/blender/4.2/scripts/addons/
+          echo "=== Installed addons ==="
+          ls -la ~/.config/blender/4.2/scripts/addons/
+
+      - name: Enable CharMorph
         run: |
           blender --background --python-expr "
           import addon_utils
-          result = addon_utils.enable('CharMorph')
+          result = addon_utils.enable('char_morph')
           if result:
-              print('✅ SUCCESS')
+              print('✅ CharMorph enabled successfully')
           else:
-              print('❌ FAILED')
+              print('❌ Failed to enable CharMorph')
               exit(1)
           "
