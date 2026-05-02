@@ -1,61 +1,56 @@
-name: DEEP SEARCH CharMorph Operators
+name: TEST Render Character
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Setup Blender 4.2
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget unzip xz-utils
+          sudo apt-get update && sudo apt-get install -y wget unzip xz-utils
           wget -q https://download.blender.org/release/Blender4.2/blender-4.2.12-linux-x64.tar.xz
           tar -xf blender-4.2.12-linux-x64.tar.xz
           echo "$(pwd)/blender-4.2.12-linux-x64" >> $GITHUB_PATH
 
-      - name: Clone CharMorph (with submodules)
+      - name: Clone and Install CharMorph
         run: |
           git clone --recursive --depth 1 https://github.com/Upliner/CharMorph.git /tmp/charmorph
-
-      - name: Install CharMorph
-        run: |
-          mkdir -p ~/.config/blender/4.2/scripts/addons/
           cp -r /tmp/charmorph ~/.config/blender/4.2/scripts/addons/char_morph
 
-      - name: Deep search for operators
+      - name: Build and Render
         run: |
           blender --background --python-expr "
-          import addon_utils, bpy, sys, inspect
+          import bpy, addon_utils, os
 
+          # فعال‌سازی CharMorph
           addon_utils.enable('char_morph')
 
-          print('='*60)
-          print('🔍 DEEP SEARCH for CharMorph Operators')
-          print('='*60)
+          # پاکسازی صحنه
+          bpy.ops.object.select_all(action='SELECT')
+          bpy.ops.object.delete()
 
-          found = []
+          # ایمپورت کاراکتر
+          bpy.ops.char_morph.library_import()
 
-          # روش ۱: جستجو در تمام ماژول‌های char_morph
-          for mod_name, mod in sys.modules.items():
-              if 'char_morph' in mod_name.lower():
-                  for name, obj in inspect.getmembers(mod, inspect.isclass):
-                      if issubclass(obj, bpy.types.Operator) and obj != bpy.types.Operator:
-                          found.append(f'Module: {mod_name} | Class: {name}')
-                          print(f'  ✅ {mod_name}.{name}')
-
-          # روش ۲: جستجو در تمام subclasses ثبت‌شده
-          for cls in bpy.types.Operator.__subclasses__():
-              module = cls.__module__
-              if 'char_morph' in module.lower() or 'charmorph' in module.lower():
-                  if cls.__name__ not in [f.split('| Class: ')[-1] for f in found]:
-                      found.append(f'Module: {module} | Class: {cls.__name__}')
-                      print(f'  ✅ (subclass) {module}.{cls.__name__}')
-
-          if not found:
-              print('❌ No CharMorph operators found.')
-
-          print('='*60)
-          print('Search complete.')
+          # ذخیره بلند
+          bpy.ops.wm.save_as_mainfile(filepath='char_final.blend')
+          print('✅ Saved char_final.blend')
           "
+
+      - name: Render with render_4_angles.py
+        run: blender --background char_final.blend --python render_4_angles.py
+
+      - name: Verify renders
+        run: |
+          ls -la renders/ && echo '✅ DONE' || echo '❌ FAILED'
+
+      - name: Upload Renders
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-renders
+          path: renders/
