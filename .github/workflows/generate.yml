@@ -1,4 +1,4 @@
-name: FIND IMPORT OPERATOR
+name: DIRECT IMPORT TEST
 
 on:
   workflow_dispatch:
@@ -20,24 +20,37 @@ jobs:
           mkdir -p ~/.config/blender/4.2/scripts/addons/
           cp -r /tmp/charmorph ~/.config/blender/4.2/scripts/addons/char_morph
 
-      - name: Find correct operator name
+      - name: Try direct import
         run: |
           blender --background --python-expr "
-          import addon_utils, bpy
+          import bpy, addon_utils
           
           addon_utils.enable('char_morph')
           
-          # لیست تمام اپراتورهای char_morph
-          ops = [op for op in dir(bpy.ops.char_morph) if not op.startswith('_')]
+          # پاکسازی صحنه
+          bpy.ops.object.select_all(action='SELECT')
+          bpy.ops.object.delete()
           
-          print('All operators:')
-          for op in ops:
-              print(f'  bpy.ops.char_morph.{op}()')
+          # روش ۱: ایمپورت مستقیم
+          try:
+              from char_morph.library import OpImport
+              OpImport.execute(None, bpy.context)
+              print('✅ Character imported via OpImport.execute()')
+          except Exception as e:
+              print(f'❌ Method 1 failed: {e}')
           
-          # پیدا کردن اپراتورهای import
-          print()
-          print('Import-related operators:')
-          for op in ops:
-              if 'import' in op.lower():
-                  print(f'  ✅ bpy.ops.char_morph.{op}()')
+          # روش ۲: bpy.ops با اسم کامل
+          try:
+              bpy.ops.char_morph.op_import()
+              print('✅ Character imported via op_import')
+          except:
+              try:
+                  bpy.ops.char_morph.import_character()
+                  print('✅ Character imported via import_character')
+              except Exception as e2:
+                  print(f'❌ Method 2 failed: {e2}')
+          
+          # ذخیره
+          bpy.ops.wm.save_as_mainfile(filepath='char_final.blend')
+          print('✅ Saved')
           "
