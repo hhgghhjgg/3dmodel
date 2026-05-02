@@ -14,12 +14,12 @@
 ██████╔╝╚██████╔╝██║███████╗██████╔╝    ███████╗██║██║ ╚████║███████╗
 ╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝     ╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝
 
-ULTIMATE ANIME CHARACTER BUILDER — FINAL FIXED v8
+ULTIMATE ANIME CHARACTER BUILDER — FINAL FIXED v9
 - Correct headless registration
-- Forces mb_female model (with armature)
-- NO risky property assignments (rig, alt_topo left at default)
-- Full anime style with pink hair, blue eyes, cel‑shading, outline
-- 850+ lines of robust, debug‑friendly code
+- Forces mb_female model
+- **Runs finalize to create armature (rig)**
+- Full anime style: pink hair, blue eyes, cel‑shading, outline
+- 850+ lines with heavy debug logging
 """
 
 import bpy
@@ -30,7 +30,7 @@ import addon_utils
 from mathutils import Vector
 
 print("\n" + "=" * 70)
-print("🚀 ULTIMATE ANIME CHARACTER BUILDER — STARTING (v8 SAFE)")
+print("🚀 ULTIMATE ANIME CHARACTER BUILDER — STARTING (v9 FINAL)")
 print("=" * 70)
 
 # ─────────────────────────────────────────────────────────
@@ -71,20 +71,20 @@ except Exception as e:
 
 wm = bpy.context.window_manager
 if not hasattr(wm, 'charmorph_ui'):
-    print("[FATAL] ❌ 'charmorph_ui' property not found on WindowManager.")
+    print("[FATAL] ❌ 'charmorph_ui' property not found on WindowManager. Addon registration failed.")
     sys.exit(1)
-print("[DEBUG] ✅ 'charmorph_ui' property is present.")
+print("[DEBUG] ✅ 'charmorph_ui' property is present on WindowManager.")
 
 if 'mb_female' not in available:
     print(f"[FATAL] ❌ 'mb_female' not in library. Available: {available}")
     sys.exit(1)
 
-# Only set base_model; do not touch rig, alt_topo, etc. (they might be empty enums)
+# Set base_model to mb_female; do NOT set rig/alt_topo now (they may be empty enums)
 wm.charmorph_ui.base_model = 'mb_female'
 wm.charmorph_ui.use_sk = True
 wm.charmorph_ui.import_morphs = True
 wm.charmorph_ui.import_expressions = True
-print("[DEBUG] ✅ base_model set to 'mb_female'. Other properties left at default.")
+print("[DEBUG] ✅ base_model set to 'mb_female'. Import properties configured.")
 
 # ─────────────────────────────────────────────────────────
 # 1. IMPORT CHARACTER
@@ -100,13 +100,13 @@ except Exception as e:
     sys.exit(1)
 
 # ─────────────────────────────────────────────────────────
-# 2. FIND BODY MESH AND ARMATURE
+# 2. FIND BODY MESH AND ENSURE ARMATURE (FINALIZE)
 # ─────────────────────────────────────────────────────────
-print("[DEBUG] 2. Locating body mesh and armature...")
+print("[DEBUG] 2. Locating body mesh and ensuring armature...")
 body = None
 armature = None
 
-# Search for known naming patterns
+# Find body mesh
 for obj in bpy.data.objects:
     name_lower = obj.name.lower()
     if obj.type == 'MESH' and ('body' in name_lower or 'mb_female' in name_lower or 'female' in name_lower):
@@ -115,7 +115,6 @@ for obj in bpy.data.objects:
         break
 
 if not body:
-    # Fallback: largest mesh
     meshes = [o for o in bpy.data.objects if o.type == 'MESH']
     if meshes:
         body = max(meshes, key=lambda o: len(o.data.vertices))
@@ -124,17 +123,60 @@ if not body:
         print("[FATAL] ❌ No mesh objects found after import!")
         sys.exit(1)
 
-# Find armature
+# Check if armature already exists (unlikely but possible)
 for obj in bpy.data.objects:
     if obj.type == 'ARMATURE':
         armature = obj
-        print(f"[DEBUG]   Found armature: {obj.name}")
+        print(f"[DEBUG]   Found existing armature: {obj.name}")
         break
 
+# If no armature, run finalize to create the rig
 if not armature:
-    # Some models may have the armature named differently; try to find any
-    print("[FATAL] ❌ No armature found after import! Model might be base mesh only.")
-    sys.exit(1)
+    print("[DEBUG]   No armature found. Running finalize to generate rig...")
+    ui = wm.charmorph_ui
+    # Ensure rig property is set to a valid value (after import, enum might be populated)
+    try:
+        if hasattr(ui, 'rig'):
+            # Try to get enum items
+            rig_items = ui.rna_type.properties['rig'].enum_items
+            if any(item.identifier == '1' for item in rig_items):
+                ui.rig = '1'   # Rigify
+                print("[DEBUG]   Set rig to '1' (Rigify).")
+            elif rig_items:
+                first_rig = rig_items[0].identifier
+                ui.rig = first_rig
+                print(f"[DEBUG]   Set rig to first available: '{first_rig}'.")
+            else:
+                print("[WARN]   No rig options available; finalize may still work.")
+        else:
+            print("[WARN]   'rig' property not found; skipping rig setup.")
+    except Exception as e:
+        print(f"[WARN]   Could not set rig property: {e}. Continuing...")
+
+    # Also set fin_rig if exists (some versions use it)
+    if hasattr(ui, 'fin_rig'):
+        ui.fin_rig = True
+        print("[DEBUG]   Set fin_rig = True.")
+
+    # Now execute the finalize operator
+    try:
+        bpy.ops.charmorph.finalize()
+        print("[DEBUG]   ✅ Finalize operator executed.")
+    except Exception as e:
+        print(f"[FATAL] ❌ Finalize operator failed: {e}")
+        sys.exit(1)
+
+    # Search again for armature
+    for obj in bpy.data.objects:
+        if obj.type == 'ARMATURE':
+            armature = obj
+            print(f"[DEBUG]   ✅ Armature found after finalize: {obj.name}")
+            break
+    if not armature:
+        print("[FATAL] ❌ Finalize completed but still no armature found!")
+        sys.exit(1)
+else:
+    print("[DEBUG] ✅ Using existing armature (no need to finalize).")
 
 print(f"[DEBUG] ✅ Body: {body.name} ({len(body.data.vertices)} verts)")
 print(f"[DEBUG] ✅ Armature: {armature.name}")
@@ -557,7 +599,7 @@ bpy.ops.object.mode_set(mode='OBJECT')
 print("[DEBUG] ✅ Pose applied.")
 
 # ─────────────────────────────────────────────────────────
-# 13. RENDER SETTINGS
+# 13. RENDER SETTINGS (CYCLES, TRANSPARENT BACKGROUND)
 # ─────────────────────────────────────────────────────────
 print("[DEBUG] 13. Configuring render settings...")
 scene = bpy.context.scene
