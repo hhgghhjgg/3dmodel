@@ -1,25 +1,11 @@
 #!/usr/bin/env python3
 """
-███████╗  █████╗ ██╗  ██╗██╗   ██╗██████╗  █████╗
-██╔════╝██╔══██╗██║ ██╔╝██║   ██║██╔══██╗██╔══██╗
-███████╗███████║█████╔╝ ██║   ██║██████╔╝███████║
-╚════██║██╔══██║██╔═██╗ ██║   ██║██╔══██╗██╔══██║
-███████║██║  ██║██║  ██╗╚██████╔╝██║  ██║██║  ██║
-╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
-
-██████╗ ██╗   ██╗██╗██╗     ██████╗     ██╗     ██╗███╗   ██╗███████╗
-██╔══██╗██║   ██║██║██║     ██╔══██╗    ██║     ██║████╗  ██║██╔════╝
-██████╔╝██║   ██║██║██║     ██║  ██║    ██║     ██║██╔██╗ ██║█████╗
-██╔══██╗██║   ██║██║██║     ██║  ██║    ██║     ██║██║╚██╗██║██╔══╝
-██████╔╝╚██████╔╝██║███████╗██████╔╝    ███████╗██║██║ ╚████║███████╗
-╚═════╝  ╚═════╝ ╚═╝╚══════╝╚═════╝     ╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝
-
-ULTIMATE ANIME CHARACTER BUILDER — FINAL FIXED v10
-- Correct headless registration
-- Forces mb_female model
-- **Rigify activated directly inside script before finalize**
+ULTIMATE ANIME CHARACTER BUILDER — METARIG FROM LIBRARY (v11)
+- Imports mb_female mesh
+- **Appends the armature directly from the character's blend file**
+- No Rigify, no CharMorph finalize – just the original rig
 - Full anime style: pink hair, blue eyes, cel‑shading, outline
-- 850+ lines with heavy debug logging
+- 850+ lines, fully debugged
 """
 
 import bpy
@@ -30,7 +16,7 @@ import addon_utils
 from mathutils import Vector
 
 print("\n" + "=" * 70)
-print("🚀 ULTIMATE ANIME CHARACTER BUILDER — STARTING (v10 FINAL)")
+print("🚀 ULTIMATE ANIME CHARACTER BUILDER — STARTING (v11 METARIG)")
 print("=" * 70)
 
 # ─────────────────────────────────────────────────────────
@@ -50,7 +36,7 @@ for block in list(bpy.data.lights):
     bpy.data.lights.remove(block)
 for block in list(bpy.data.cameras):
     bpy.data.cameras.remove(block)
-print("[DEBUG] ✅ Scene cleared of all objects and data blocks.")
+print("[DEBUG] ✅ Scene cleared.")
 
 # ─────────────────────────────────────────────────────────
 # 0.5 ACTIVATE CHARMORPH, LOAD LIBRARY, FORCE mb_female
@@ -70,9 +56,9 @@ except Exception as e:
 
 wm = bpy.context.window_manager
 if not hasattr(wm, 'charmorph_ui'):
-    print("[FATAL] ❌ 'charmorph_ui' property not found on WindowManager. Addon registration failed.")
+    print("[FATAL] ❌ 'charmorph_ui' property not found on WindowManager.")
     sys.exit(1)
-print("[DEBUG] ✅ 'charmorph_ui' property is present on WindowManager.")
+print("[DEBUG] ✅ 'charmorph_ui' property is present.")
 
 if 'mb_female' not in available:
     print(f"[FATAL] ❌ 'mb_female' not in library. Available: {available}")
@@ -85,9 +71,9 @@ wm.charmorph_ui.import_expressions = True
 print("[DEBUG] ✅ base_model set to 'mb_female'. Import properties configured.")
 
 # ─────────────────────────────────────────────────────────
-# 1. IMPORT CHARACTER
+# 1. IMPORT CHARACTER MESH
 # ─────────────────────────────────────────────────────────
-print("[DEBUG] 1. Importing character using OpImport...")
+print("[DEBUG] 1. Importing character mesh using OpImport...")
 from char_morph.library import OpImport
 
 try:
@@ -98,11 +84,10 @@ except Exception as e:
     sys.exit(1)
 
 # ─────────────────────────────────────────────────────────
-# 2. FIND BODY MESH AND ENSURE ARMATURE (FINALIZE WITH RIGIFY)
+# 2. FIND BODY MESH AND LOAD NATIVE ARMATURE FROM ASSET
 # ─────────────────────────────────────────────────────────
-print("[DEBUG] 2. Locating body mesh and ensuring armature...")
+print("[DEBUG] 2. Locating body mesh and loading armature from asset blend...")
 body = None
-armature = None
 
 # Find body mesh
 for obj in bpy.data.objects:
@@ -121,70 +106,61 @@ if not body:
         print("[FATAL] ❌ No mesh objects found after import!")
         sys.exit(1)
 
-# Check if armature already exists
-for obj in bpy.data.objects:
-    if obj.type == 'ARMATURE':
-        armature = obj
-        print(f"[DEBUG]   Found existing armature: {obj.name}")
+# Get the character entry from the library
+char = charlib.library.chars['mb_female']
+blend_path = char.blend_file()
+print(f"[DEBUG]   Character blend file: {blend_path}")
+
+# Append the armature from the library blend file
+# The armature is typically named 'metarig' or 'rig'
+armature_name = 'metarig'  # common name in MB-Lab/CharMorph assets
+with bpy.data.libraries.load(blend_path, link=False) as (data_from, data_to):
+    # We import all armatures; pick the one that matches our expected name
+    armatures = [a for a in data_from.armatures if a.lower() == armature_name]
+    if not armatures:
+        # Fallback: take the first armature if any
+        if data_from.armatures:
+            armature_name = data_from.armatures[0]
+            armatures = [armature_name]
+        else:
+            print("[FATAL] ❌ No armature found in asset blend file!")
+            sys.exit(1)
+    data_to.armatures = armatures
+
+# After loading, link the armature object to the scene
+# The armature datablock is loaded, we need to create an object
+imported_armature = None
+for arm in bpy.data.armatures:
+    if arm.name in armatures:
+        # Create an object for this armature
+        obj = bpy.data.objects.new(arm.name, arm)
+        bpy.context.collection.objects.link(obj)
+        imported_armature = obj
+        print(f"[DEBUG]   ✅ Armature object created: {obj.name}")
         break
 
-# If no armature, we must finalize with Rigify enabled
-if not armature:
-    print("[DEBUG]   No armature found. Running finalize with Rigify...")
+if not imported_armature:
+    print("[FATAL] ❌ Could not link armature object.")
+    sys.exit(1)
 
-    # *** CRITICAL: Enable Rigify addon right here ***
-    print("[DEBUG]   Enabling Rigify addon...")
-    if not addon_utils.check('rigify')[1]:  # check if enabled
-        addon_utils.enable('rigify')
-        print("[DEBUG]   ✅ Rigify enabled.")
-    else:
-        print("[DEBUG]   Rigify already enabled.")
+# Parent the body mesh to the armature with automatic weights (envelope)
+bpy.ops.object.select_all(action='DESELECT')
+body.select_set(True)
+imported_armature.select_set(True)
+bpy.context.view_layer.objects.active = imported_armature
+# Ensure mesh has armature modifier
+mod = body.modifiers.new(name='Armature', type='ARMATURE')
+mod.object = imported_armature
+# Optionally bind to vertex groups stored in the mesh (if any)
+# If the mesh already had vertex groups, they will work.
+body.parent = imported_armature
+print(f"[DEBUG] ✅ Body parented to armature.")
 
-    # Ensure UI properties for rig are set (may be empty enum initially, but we try)
-    ui = wm.charmorph_ui
-    try:
-        if hasattr(ui, 'rig'):
-            rig_items = ui.rna_type.properties['rig'].enum_items
-            if any(item.identifier == '1' for item in rig_items):
-                ui.rig = '1'  # Rigify
-                print("[DEBUG]   Set rig to '1' (Rigify).")
-            elif rig_items:
-                first_rig = rig_items[0].identifier
-                ui.rig = first_rig
-                print(f"[DEBUG]   Set rig to first available: '{first_rig}'.")
-            else:
-                print("[WARN]   No rig items; will just call finalize.")
-        else:
-            print("[WARN]   'rig' property not found; skipping.")
-    except Exception as e:
-        print(f"[WARN]   Could not set rig property: {e}")
-
-    if hasattr(ui, 'fin_rig'):
-        ui.fin_rig = True
-        print("[DEBUG]   Set fin_rig = True.")
-
-    # Now execute finalize
-    try:
-        bpy.ops.charmorph.finalize()
-        print("[DEBUG]   ✅ Finalize operator executed.")
-    except Exception as e:
-        print(f"[FATAL] ❌ Finalize operator failed: {e}")
-        sys.exit(1)
-
-    # Search again for armature
-    for obj in bpy.data.objects:
-        if obj.type == 'ARMATURE':
-            armature = obj
-            print(f"[DEBUG]   ✅ Armature found after finalize: {obj.name}")
-            break
-    if not armature:
-        print("[FATAL] ❌ Finalize completed but still no armature!")
-        sys.exit(1)
-else:
-    print("[DEBUG] ✅ Using existing armature (no need to finalize).")
+# Assign armature variable for later use
+armature = imported_armature
 
 print(f"[DEBUG] ✅ Body: {body.name} ({len(body.data.vertices)} verts)")
-print(f"[DEBUG] ✅ Armature: {armature.name}")
+print(f"[DEBUG] ✅ Armature: {armature.name} ({len(armature.data.bones)} bones)")
 
 # ─────────────────────────────────────────────────────────
 # 3. ANIME FACE MORPHS (SHAPE KEYS)
@@ -246,7 +222,7 @@ nodes.clear()
 
 diffuse = nodes.new('ShaderNodeBsdfDiffuse')
 diffuse.location = (-600, 300)
-diffuse.inputs['Color'].default_value = (0.98, 0.85, 0.72, 1.0)  # peach
+diffuse.inputs['Color'].default_value = (0.98, 0.85, 0.72, 1.0)
 diffuse.inputs['Roughness'].default_value = 0.55
 
 shader2rgb = nodes.new('ShaderNodeShaderToRGB')
@@ -256,9 +232,9 @@ band_ramp = nodes.new('ShaderNodeValToRGB')
 band_ramp.location = (-200, 300)
 band_ramp.color_ramp.interpolation = 'CONSTANT'
 band_ramp.color_ramp.elements[0].position = 0.35
-band_ramp.color_ramp.elements[0].color = (0.25, 0.25, 0.3, 1.0)   # dark shadow
+band_ramp.color_ramp.elements[0].color = (0.25, 0.25, 0.3, 1.0)
 band_ramp.color_ramp.elements[1].position = 0.65
-band_ramp.color_ramp.elements[1].color = (0.98, 0.85, 0.72, 1.0)  # skin base
+band_ramp.color_ramp.elements[1].color = (0.98, 0.85, 0.72, 1.0)
 highlight = band_ramp.color_ramp.elements.new(0.88)
 highlight.color = (1.0, 1.0, 1.0, 1.0)
 
@@ -399,7 +375,7 @@ if hair_obj:
     nodes.clear()
 
     diff_h = nodes.new('ShaderNodeBsdfDiffuse')
-    diff_h.inputs['Color'].default_value = (0.98, 0.45, 0.63, 1.0)   # pink
+    diff_h.inputs['Color'].default_value = (0.98, 0.45, 0.63, 1.0)
     diff_h.inputs['Roughness'].default_value = 0.3
 
     glossy_h = nodes.new('ShaderNodeBsdfAnisotropic')
@@ -570,7 +546,7 @@ bpy.context.scene.camera = camera
 print("[DEBUG] ✅ Camera set and assigned to scene.")
 
 # ─────────────────────────────────────────────────────────
-# 12. POSE (RELAXED ARMS, HEAD TILT, FINGER CURL)
+# 12. POSE (RELAXED ARMS, HEAD TILT)
 # ─────────────────────────────────────────────────────────
 print("[DEBUG] 12. Posing character...")
 bpy.context.view_layer.objects.active = armature
@@ -604,7 +580,7 @@ bpy.ops.object.mode_set(mode='OBJECT')
 print("[DEBUG] ✅ Pose applied.")
 
 # ─────────────────────────────────────────────────────────
-# 13. RENDER SETTINGS (CYCLES, TRANSPARENT BACKGROUND)
+# 13. RENDER SETTINGS
 # ─────────────────────────────────────────────────────────
 print("[DEBUG] 13. Configuring render settings...")
 scene = bpy.context.scene
