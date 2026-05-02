@@ -28,14 +28,6 @@ jobs:
           mkdir -p ~/.config/blender/4.2/scripts/addons/
           cp -r /tmp/charmorph ~/.config/blender/4.2/scripts/addons/char_morph
 
-      - name: Enable Rigify addon
-        run: |
-          blender --background --python-expr "
-          import addon_utils
-          addon_utils.enable('rigify')
-          print('✅ Rigify enabled')
-          "
-
       - name: Build Anime Character
         run: blender --background --python build_anime_character.py
 
