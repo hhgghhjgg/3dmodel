@@ -1,1 +1,43 @@
+name: BUILD ANIME CHARACTER AND COMMIT RENDERS
 
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Blender 4.2
+        run: |
+          sudo apt-get update && sudo apt-get install -y wget unzip xz-utils
+          wget -q https://download.blender.org/release/Blender4.2/blender-4.2.12-linux-x64.tar.xz
+          tar -xf blender-4.2.12-linux-x64.tar.xz
+          echo "$(pwd)/blender-4.2.12-linux-x64" >> $GITHUB_PATH
+
+      - name: Clone and Install CharMorph
+        run: |
+          git clone --recursive --depth 1 https://github.com/Upliner/CharMorph.git /tmp/charmorph
+          mkdir -p ~/.config/blender/4.2/scripts/addons/
+          cp -r /tmp/charmorph ~/.config/blender/4.2/scripts/addons/char_morph
+
+      - name: Build Anime Character
+        run: blender --background --python build_anime_character.py
+
+      - name: Render 4 Angles
+        run: blender --background char_final.blend --python render_4_angles.py
+
+      - name: Commit renders to repository
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add renders/
+          git commit -m "✨ Add anime character renders" || echo "No changes to commit"
+          git push
