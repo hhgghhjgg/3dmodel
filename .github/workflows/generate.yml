@@ -1,15 +1,12 @@
-name: TEST Render Character
+name: FIND IMPORT OPERATOR
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Setup Blender 4.2
         run: |
           sudo apt-get update && sudo apt-get install -y wget unzip xz-utils
@@ -23,35 +20,24 @@ jobs:
           mkdir -p ~/.config/blender/4.2/scripts/addons/
           cp -r /tmp/charmorph ~/.config/blender/4.2/scripts/addons/char_morph
 
-      - name: Build and Render
+      - name: Find correct operator name
         run: |
           blender --background --python-expr "
-          import bpy, addon_utils, os
-
-          # فعال‌سازی CharMorph
+          import addon_utils, bpy
+          
           addon_utils.enable('char_morph')
-
-          # پاکسازی صحنه
-          bpy.ops.object.select_all(action='SELECT')
-          bpy.ops.object.delete()
-
-          # ایمپورت کاراکتر
-          bpy.ops.char_morph.library_import()
-
-          # ذخیره بلند
-          bpy.ops.wm.save_as_mainfile(filepath='char_final.blend')
-          print('✅ Saved char_final.blend')
+          
+          # لیست تمام اپراتورهای char_morph
+          ops = [op for op in dir(bpy.ops.char_morph) if not op.startswith('_')]
+          
+          print('All operators:')
+          for op in ops:
+              print(f'  bpy.ops.char_morph.{op}()')
+          
+          # پیدا کردن اپراتورهای import
+          print()
+          print('Import-related operators:')
+          for op in ops:
+              if 'import' in op.lower():
+                  print(f'  ✅ bpy.ops.char_morph.{op}()')
           "
-
-      - name: Render with render_4_angles.py
-        run: blender --background char_final.blend --python render_4_angles.py
-
-      - name: Verify renders
-        run: |
-          ls -la renders/ && echo '✅ DONE' || echo '❌ FAILED'
-
-      - name: Upload Renders
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-renders
-          path: renders/
