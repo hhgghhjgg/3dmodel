@@ -16,22 +16,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ۲. نصب Blender 4.2.12 (سازگار با MPFB2)
-      - name: Setup Blender 4.2.12
+      # ۲. نصب بلندر 3.6.15 LTS (کاملاً سازگار با MPFB2)
+      - name: Setup Blender 3.6 LTS
         run: |
           sudo apt-get update
           sudo apt-get install -y wget unzip xz-utils
-          wget -q https://download.blender.org/release/Blender4.2/blender-4.2.12-linux-x64.tar.xz
-          tar -xf blender-4.2.12-linux-x64.tar.xz
-          echo "$(pwd)/blender-4.2.12-linux-x64" >> $GITHUB_PATH
+          wget -q https://download.blender.org/release/Blender3.6/blender-3.6.15-linux-x64.tar.xz
+          tar -xf blender-3.6.15-linux-x64.tar.xz
+          echo "$(pwd)/blender-3.6.15-linux-x64" >> $GITHUB_PATH
 
-      # ۳. نصب افزونه MPFB2 (مستقیم از مخزن با رفع مشکل bl_info)
+      # ۳. نصب افزونه MPFB2 نسخهٔ v2.0.0-alpha (سازگار با روش سنتی)
       - name: Install MPFB2 addon
         run: |
-          git clone --depth 1 https://github.com/makehumancommunity/mpfb2.git /tmp/mpfb2
-          sed -i '1i bl_info = {}' /tmp/mpfb2/src/mpfb/__init__.py
-          mkdir -p ~/.config/blender/4.2/scripts/addons/
-          cp -r /tmp/mpfb2/src/mpfb ~/.config/blender/4.2/scripts/addons/
+          git clone --depth 1 --branch v2.0.0-alpha https://github.com/makehumancommunity/mpfb2.git /tmp/mpfb2
+          mkdir -p ~/.config/blender/3.6/scripts/addons/
+          cp -r /tmp/mpfb2/src/mpfb ~/.config/blender/3.6/scripts/addons/
+          # فعال‌سازی افزونه با روش استاندارد (بدون نیاز به سیستم Extension)
           blender --background --python-expr "
           import addon_utils
           result = addon_utils.enable('mpfb')
@@ -42,11 +42,11 @@ jobs:
               exit(1)
           "
 
-      # ۴. ساخت کاراکتر پایه (اسکریپت خودش char_customized.blend ذخیره می‌کند)
+      # ۴. ساخت کاراکتر پایه (اسکریپت خودش فایل char_customized.blend را ذخیره می‌کند)
       - name: Step 1 - Generate base character
         run: blender --background --python mpfb2_base.py
 
-      # ۵. بررسی فایل میانی
+      # ۵. بررسی وجود فایل میانی
       - name: Verify char_customized.blend
         run: |
           if [ -f char_customized.blend ]; then
@@ -56,11 +56,11 @@ jobs:
             exit 1
           fi
 
-      # ۶. شخصی‌سازی (روی char_customized.blend اجرا و char_final.blend ذخیره می‌شود)
+      # ۶. شخصی‌سازی کاراکتر (فایل میانی را باز کرده و char_final.blend را ذخیره می‌کند)
       - name: Step 2 - Customize character
         run: blender --background char_customized.blend --python bpy_customize.py
 
-      # ۷. بررسی فایل نهایی
+      # ۷. بررسی وجود فایل نهایی
       - name: Verify char_final.blend
         run: |
           if [ -f char_final.blend ]; then
@@ -70,11 +70,11 @@ jobs:
             exit 1
           fi
 
-      # ۸. رندر چهار نما
+      # ۸. رندر چهار نما (جلو، چپ، عقب، راست)
       - name: Render 4 angles
         run: blender --background char_final.blend --python render_4_angles.py
 
-      # ۹. بررسی رندرها
+      # ۹. بررسی خروجی رندرها
       - name: Verify renders
         run: |
           if [ -d renders ] && [ "$(ls -A renders/*.png 2>/dev/null)" ]; then
@@ -85,7 +85,7 @@ jobs:
             exit 1
           fi
 
-      # ۱۰. آپلود آرتیفکت‌ها
+      # ۱۰. آپلود آرتیفکت‌ها (فایل بلند نهایی و تصاویر)
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
