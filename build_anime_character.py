@@ -122,7 +122,7 @@ if not body:
 
 # Get character info and path to assets
 char = charlib.library.chars['mb_female']
-char_dir = char.path()  # e.g., .../characters/mb_female
+char_dir = os.path.dirname(char.blend_file())  # e.g., .../characters/mb_female
 assets_dir = os.path.join(char_dir, "assets")
 print(f"[DEBUG]   Character dir: {char_dir}")
 print(f"[DEBUG]   Assets dir: {assets_dir}")
