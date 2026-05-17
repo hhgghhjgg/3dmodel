@@ -1,0 +1,41 @@
+# .github/workflows/sync_fork.yml
+name: 🔄 Sync Shir o Khorshid Fork
+
+on:
+  # اجرای خودکار هر ۶ ساعت
+  schedule:
+    - cron: '0 */6 * * *'
+  # امکان اجرای دستی
+  workflow_dispatch:
+
+jobs:
+  sync-submodule:
+    runs-on: ubuntu-latest
+    steps:
+      # ۱. دریافت کد مخزن اصلی شما
+      - name: 📥 Checkout your repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: true  # اگر از قبل submodule داشتید
+
+      # ۲. اضافه کردن مخزن شیر و خورشید به عنوان submodule
+      - name: ➕ Add Shir o Khorshid as submodule
+        run: |
+          git submodule add -b main https://github.com/ssmirr/shirokhorshid-android.git شیر-خورشید || echo "Submodule already exists"
+          git submodule update --init --recursive
+
+      # ۳. به‌روزرسانی submodule به آخرین نسخه
+      - name: 🔄 Update submodule to latest
+        run: |
+          cd شیر-خورشید
+          git checkout main
+          git pull origin main
+          cd ..
+
+      # ۴. ذخیره تغییرات در مخزن شما
+      - name: 📝 Commit updated submodule
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🔄 به‌روزرسانی خودکار مخزن شیر و خورشید"
+          file_pattern: 'شیر-خورشید'
